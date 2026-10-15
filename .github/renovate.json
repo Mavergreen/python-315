@@ -17,6 +17,58 @@
       "packageNameTemplate": "python/cpython",
       "datasourceTemplate": "github-tags",
       "extractVersionTemplate": "^v(?<version>3\\.15\\.\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^components/clang22/version$/"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>\\S+)\\s*$"
+      ],
+      "depNameTemplate": "Mavergreen/clang-22",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-mavericks\\.(?<build>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "SQLite's version only: sqlite.org's year directory (YEAR) and the tarball's SHA-256 move by hand, since sqlite.org publishes SHA3-256 alone. Until they do, the bump's build fails at the fetch, naming the SHA-256 it got.",
+      "managerFilePatterns": [
+        "/^components/sqlite/version$/"
+      ],
+      "matchStrings": [
+        "VERSION=(?<currentValue>\\S+)"
+      ],
+      "depNameTemplate": "sqlite",
+      "packageNameTemplate": "sqlite/sqlite",
+      "datasourceTemplate": "github-tags",
+      "extractVersionTemplate": "^version-(?<version>\\d+\\.\\d+\\.\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "xz publishes GPG signatures only, so the tarball's SHA-256 is pinned beside the tag; github-release-attachments moves both.",
+      "managerFilePatterns": [
+        "/^components/xz/version$/"
+      ],
+      "matchStrings": [
+        "TAG=(?<currentValue>\\S+)\\s+SHA256=(?<currentDigest>[0-9a-f]{64})"
+      ],
+      "depNameTemplate": "xz",
+      "packageNameTemplate": "tukaani-project/xz",
+      "datasourceTemplate": "github-release-attachments"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^components/zstd/version$/"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>\\S+)\\s*$"
+      ],
+      "depNameTemplate": "zstd",
+      "packageNameTemplate": "facebook/zstd",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
     }
   ],
   "packageRules": [
