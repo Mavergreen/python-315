@@ -104,8 +104,11 @@ find "$tree" -type f -exec /usr/bin/file {} + | sed -n 's/: *Mach-O.*//p' | whil
   "$CLANG22_BIN/llvm-otool" -L "$f" | sed 1d | awk '{print $1}' | grep -qx "$prefix/lib/$lib" || continue
   rel="${f#"$tree"/}"
   up="$(printf '%s\n' "${rel%/*}" | sed 's|[^/][^/]*|..|g')"
-  if "$CLANG22_BIN/llvm-otool" -hv "$f" | grep -q EXECUTE; then base=@executable_path; else base=@loader_path; fi
-  "$INT" -change "$prefix/lib/$lib" "@rpath/$lib" -add_rpath "$base/$up/lib" "$f"
+  if "$CLANG22_BIN/llvm-otool" -hv "$f" | grep -q EXECUTE; then
+    "$INT" -change "$prefix/lib/$lib" "@rpath/$lib" -add_rpath "@executable_path/$up/lib" -add_rpath "$prefix/lib" "$f"
+  else
+    "$INT" -change "$prefix/lib/$lib" "@rpath/$lib" -add_rpath "@loader_path/$up/lib" "$f"
+  fi
 done
 if [ "$arch" = arm64 ] && [ -x /usr/bin/codesign ]; then
   find "$tree" -type f -exec /usr/bin/file {} + | sed -n 's/: *Mach-O.*//p' | while read -r f; do

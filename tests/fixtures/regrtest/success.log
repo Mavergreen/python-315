@@ -1,0 +1,13 @@
+Using random seed: 413236003
+0:00:00 load avg: 1.92 Run 2 tests in parallel using 2 worker processes (timeout: 10 min, worker timeout: 15 min)
+0:00:00 load avg: 1.92 [1/2] test_grammar passed
+0:00:01 load avg: 1.92 [2/2] test_os passed
+
+== Tests result: SUCCESS ==
+
+All 2 tests OK.
+
+Total duration: 1.4 sec
+Total tests: run=811
+Total test files: run=2/2
+Result: SUCCESS

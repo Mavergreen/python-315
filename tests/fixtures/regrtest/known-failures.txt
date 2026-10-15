@@ -1,0 +1,6 @@
+test_math.FMATests.test_fma_single_round  # canned: fma rounds twice
+test_math.FMATests.test_fma_zero_result  # canned: fma loses the sign of zero
+
+test_pkgutil.PkgutilTests.test_name_resolution  # canned: the file system normalizes the name
+test_multiprocessing_forkserver.test_processes.WithProcessesTestProcess.test_large_sys_argv  # canned: ARG_MAX
+test_crashy  # canned: a file that crashed without naming a test

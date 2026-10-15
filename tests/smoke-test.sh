@@ -61,8 +61,12 @@ while read -r f; do
 done < "$t/macho"
 [ ! -s "$t/leaks" ] || { cat "$t/leaks"; fail "a Mach-O names a contaminating prefix"; }
 grep -q 'LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib$' "$t/names" || fail "the load-command scan found no libSystem"
-bad="$(grep -v -E ' (@rpath|@executable_path|@loader_path)/| /usr/lib/| /System/' "$t/names" || true)"
-[ -z "$bad" ] || { printf '%s\n' "$bad"; fail "an install name or load command is absolute outside /usr/lib and /System"; }
+fallback="/usr/local/mavergreen/python315/lib"
+rpaths="$(awk -v p="$py: LC_RPATH " 'index($0, p) == 1 { print substr($0, length(p) + 1) }' "$t/names" | xargs)"
+[ "$rpaths" = "@executable_path/../lib $fallback" ] ||
+  fail "python3.15's rpaths are '$rpaths', not @executable_path/../lib then $fallback (the fallback a venv's copied interpreter loads libpython from)"
+bad="$(grep -v -x -F "$py: LC_RPATH $fallback" "$t/names" | grep -v -E ' (@rpath|@executable_path|@loader_path)/| /usr/lib/| /System/' || true)"
+[ -z "$bad" ] || { printf '%s\n' "$bad"; fail "an install name or load command is absolute outside /usr/lib and /System (only python3.15 may carry the absolute fallback rpath)"; }
 cxx="$(grep -E 'libc\+\+|libstdc\+\+' "$t/names" || true)"
 [ -z "$cxx" ] || { printf '%s\n' "$cxx"; fail "the stage links a C++ runtime, but py_toolchain's CXX has no 10.9 libc++ handling"; }
 if ls "$prefix"/bin/pip* > /dev/null 2>&1; then fail "the stage has a pip: $(ls "$prefix"/bin/pip*)"; fi

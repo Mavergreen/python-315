@@ -69,7 +69,10 @@ the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
 - **Modules:** `Modules/Setup.local` disables `_ssl` and `_hashlib` (no OpenSSL in this release:
   `hashlib` uses CPython's built-in HACL\* code), and `_tkinter` and `_gdbm`, which are not offered.
 - **Install names:** `libpython3.15.dylib` is `@rpath/libpython3.15.dylib`, and each Mach-O that
-  loads it finds it through an rpath relative to itself, so the tree is relocatable.
+  loads it finds it through an rpath relative to itself, so the tree is relocatable. `python3.15`
+  alone has a second rpath after that one, `/usr/local/mavergreen/python315/lib`: a venv's copied
+  interpreter (`venv.create()`, `python3.15 -m venv --copies`) has no `lib` beside it, and finds
+  libpython there. The smoke test allows that one absolute path, on that one file.
 - **No C++:** nothing in this build compiles or links C++, and `tests/smoke-test.sh` fails if a
   Mach-O loads a C++ runtime, since clang22's `CXX` here has no 10.9 libc++ handling.
 - **Patches:** each file in `patches/` says why it exists and when to drop it.

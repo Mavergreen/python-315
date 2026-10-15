@@ -1,0 +1,79 @@
+Using random seed: 1921503202
+0:00:00 load avg: 1.86 Run 7 tests in parallel using 12 worker processes (timeout: 10 min, worker timeout: 15 min)
+0:00:00 load avg: 1.86 [1/7] test_grammar passed
+0:00:01 load avg: 1.86 [2/7/1] test_pkgutil failed (1 error)
+test_name_resolution (test.test_pkgutil.PkgutilTests.test_name_resolution) ... ERROR
+test_name_resolution_strict (test.test_pkgutil.PkgutilTests.test_name_resolution_strict) ... ok
+
+======================================================================
+ERROR: test_name_resolution (test.test_pkgutil.PkgutilTests.test_name_resolution)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/stage/usr/local/mavergreen/python315/lib/python3.15/test/test_pkgutil.py", line 306, in test_name_resolution
+    mod = importlib.import_module(uw)
+ModuleNotFoundError: No module named 'é'
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.101s
+
+FAILED (errors=1)
+test test_pkgutil failed
+0:00:01 load avg: 1.87 [3/7/2] test_math failed (2 failures)
+test_fma_single_round (test.test_math.FMATests.test_fma_single_round) ... FAIL
+test_fma_zero_result (test.test_math.FMATests.test_fma_zero_result) ... FAIL
+
+======================================================================
+FAIL: test_fma_single_round (test.test_math.FMATests.test_fma_single_round) (a=1e-300)
+----------------------------------------------------------------------
+AssertionError: 0.0 != 1e-300
+
+======================================================================
+FAIL: test_fma_single_round (test.test_math.FMATests.test_fma_single_round) (a=-1e-300)
+----------------------------------------------------------------------
+AssertionError: 0.0 != -1e-300
+
+======================================================================
+FAIL: test_fma_zero_result (test.test_math.FMATests.test_fma_zero_result)
+----------------------------------------------------------------------
+AssertionError: False is not true : Expected a negative zero, got 0.0
+
+----------------------------------------------------------------------
+Ran 89 tests in 1.164s
+
+FAILED (failures=2, skipped=2)
+test test_math failed
+0:00:02 load avg: 1.87 [4/7/2] test_os passed
+0:00:02 load avg: 1.87 [5/7/2] test_logging failed (env changed)
+Warning -- Dangling threads: {<Thread(Thread-1, started daemon 1)>}
+0:00:30 load avg: 2.10 running (1): test.test_multiprocessing_forkserver.test_processes (30.0 sec)
+0:00:41 load avg: 2.10 [6/7/3] test.test_multiprocessing_forkserver.test_processes failed (1 error) (41.0 sec) -- running (1): test_crashy (11.0 sec)
+test_large_sys_argv (test.test_multiprocessing_forkserver.test_processes.WithProcessesTestProcess.test_large_sys_argv) ... ERROR
+
+======================================================================
+ERROR: test_large_sys_argv (test.test_multiprocessing_forkserver.test_processes.WithProcessesTestProcess.test_large_sys_argv)
+----------------------------------------------------------------------
+OSError: [Errno 7] Argument list too long
+
+----------------------------------------------------------------------
+Ran 1 test in 0.5s
+
+FAILED (errors=1)
+test test.test_multiprocessing_forkserver.test_processes failed
+0:00:42 load avg: 2.10 [7/7/4] test_crashy worker non-zero exit code (Exit code -11)
+Fatal Python error: Segmentation fault
+
+== Tests result: FAILURE ==
+
+1 test altered the execution environment (env changed):
+    test_logging
+
+4 tests failed:
+    test.test_multiprocessing_forkserver.test_processes test_crashy
+    test_math test_pkgutil
+
+2 tests OK.
+
+Total duration: 42.0 sec
+Total tests: run=93 failures=4 skipped=2
+Total test files: run=7/7 failed=4 env_changed=1
+Result: FAILURE

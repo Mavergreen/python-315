@@ -1,0 +1,29 @@
+test_math.FMATests.test_fma_single_round  # 10.9's libm fma() is inexact: fma(a-1, a+1, 1.0) returns -a*a where the exact result is a*a
+test_math.FMATests.test_fma_zero_result  # 10.9's libm fma() returns +0.0 where IEEE 754 requires -0.0
+test_gc_stats.TestLocalGCStats.test_all_interpreters_filter_for_local_process  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
+test_gc_stats.TestLocalGCStats.test_gc_stats_fields  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
+test_gc_stats.TestLocalGCStats.test_module_get_gc_stats_fields  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
+test_sys.TestRemoteExec.test_remote_exec_with_self_process  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
+test_audit.AuditTest.test_sys_remote_exec  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
+test_locale.TestEnUSCollation.test_strcoll_with_diacritic  # 10.9's libc collates en_US.UTF-8 by code point, so 'à' sorts after 'b'
+test_locale.TestEnUSCollation.test_strxfrm_with_diacritic  # 10.9's libc collates en_US.UTF-8 by code point, so 'à' sorts after 'b'
+test_shutil.TestMisc.test_chown  # dir_fd is unavailable: CPython enables the *at() functions only when it runs on macOS 10.10 or later, so it never calls Recaulk's back-fills
+test_tempfile.TestTemporaryDirectory.test_cleanup_safe  # dir_fd is unavailable: CPython enables the *at() functions only when it runs on macOS 10.10 or later, so it never calls Recaulk's back-fills
+test_os.test_posix.TestPosixWeaklinking.test_link  # upstream test bug, reachable only on macOS before 10.10: it expects "src_dir_fd unavailable", and os.link says "src_dir_fd and dst_dir_fd unavailable"
+test_multiprocessing_forkserver.test_misc.MiscTestCase.test_preload_main_large_sys_argv  # 10.9's ARG_MAX is 256 KiB, and the test starts the forkserver with 5,000 50-byte arguments (E2BIG)
+test_pkgutil.PkgutilTests.test_name_resolution  # HFS+ stores file names decomposed (NFD), so the module written as 'é' is not found under its composed name
+stage: test_cmd_line.CmdLineTest.test_python_executable  # run from a stage: PYTHONEXECUTABLE=/busr/bbin/bpython makes getpath fall back to the configured prefix, /usr/local/mavergreen/python315, which is not where the stage is
+stage: test_sysconfig.TestSysConfig.test_makefile_overwrites_config_vars  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_executable  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_macos_env  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_multiprocessing  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_multiprocessing_recursion  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_prefixes  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_special_chars_bash  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_special_chars_csh  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_sysconfig  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.BasicTest.test_zippath_from_non_installed_posix  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.EnsurePipTest.test_explicit_no_pip  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.EnsurePipTest.test_no_pip_by_default  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+stage: test_venv.EnsurePipTest.test_with_pip  # run from a stage: a venv's copied interpreter finds libpython through the fallback rpath /usr/local/mavergreen/python315/lib, which a stage is not at
+ignore: test_tarfile.TestExtractionFilters.test_realpath_limit_attack  # on 10.9 it builds a tree deeper than PATH_MAX that Python cannot delete without the *at() functions, which crashes regrtest's worker and stops the run. Revisit when Recaulk's linkat() no longer returns EINVAL and python-315 is built without CPython's macOS availability guards for Recaulk's back-fills, so shutil.rmtree uses its fd-based implementation.
