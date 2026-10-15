@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>Mavergreen/shipyard"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track CPython for THIS REPO's line. One repo ships one line, so the cap keeps it on 3.15.x: Python 3.16 arrives as a new repo.",
+      "managerFilePatterns": [
+        "/^UPSTREAM_VERSION$/"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>.+?)\\s*$"
+      ],
+      "depNameTemplate": "python-315",
+      "packageNameTemplate": "python/cpython",
+      "datasourceTemplate": "github-tags",
+      "extractVersionTemplate": "^v(?<version>3\\.15\\.\\d+)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "The 315 line stays on 3.15.x. Not an automerge exception -- automerge is the family default (ship-if-green) and still applies; this only stops Renovate from walking the line onto a Python minor it was never built for.",
+      "matchDepNames": [
+        "python-315"
+      ],
+      "allowedVersions": "<3.16"
+    }
+  ]
+}
