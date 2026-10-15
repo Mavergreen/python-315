@@ -1,0 +1,67 @@
+Subject: configure: a cross build for Darwin takes its release from the host triple
+
+A cross build sets ac_sys_release to the empty string, so on Darwin the
+"Darwin/[12][0-9].*" case that keeps _XOPEN_SOURCE and _POSIX_C_SOURCE
+undefined never matches. pyconfig.h then defines both, <sys/socket.h> hides
+sendfile(), and posixmodule.c fails to compile; probes run under those
+defines also lose HAVE_CHROOT and HAVE_GETPAGESIZE. A native build reads the
+release from uname -r. A cross build now reads the major release from the
+host triple (x86_64-apple-darwin13 gives 13.0), which is the part every
+Darwin/<release> case in configure looks at. Hosts other than Darwin keep
+the empty release.
+
+Upstreamable as is. Drop it when CPython's configure derives the release for
+a Darwin cross build itself.
+
+--- a/configure
++++ b/configure
+@@ -4148,6 +4148,7 @@
+        # ac_sys_system and ac_sys_release are used for setting
+        # a lot of different things including 'define_xopen_source'
+        # in the case statement below.
++	ac_sys_release=
+ 	case "$host" in
+ 	*-*-linux-android*)
+ 		ac_sys_system=Linux-android
+@@ -4163,6 +4164,7 @@
+ 		;;
+ 	*-*-darwin*)
+ 		ac_sys_system=Darwin
++		ac_sys_release=`expr "$host_os" : 'darwin\([0-9][0-9]*\)'`.0
+ 		;;
+ 	*-gnu)
+ 		ac_sys_system=GNU
+@@ -4181,7 +4183,6 @@
+ 		MACHDEP="unknown"
+ 		as_fn_error $? "cross build not supported for $host" "$LINENO" 5
+ 	esac
+-	ac_sys_release=
+     else
+ 	ac_sys_system=`uname -s`
+ 	if test "$ac_sys_system" = "AIX" \
+--- a/configure.ac
++++ b/configure.ac
+@@ -326,6 +326,7 @@
+        # ac_sys_system and ac_sys_release are used for setting
+        # a lot of different things including 'define_xopen_source'
+        # in the case statement below.
++	ac_sys_release=
+ 	case "$host" in
+ 	*-*-linux-android*)
+ 		ac_sys_system=Linux-android
+@@ -341,6 +342,7 @@
+ 		;;
+ 	*-*-darwin*)
+ 		ac_sys_system=Darwin
++		ac_sys_release=`expr "$host_os" : 'darwin\([[0-9]][[0-9]]*\)'`.0
+ 		;;
+ 	*-gnu)
+ 		ac_sys_system=GNU
+@@ -359,7 +361,6 @@
+ 		MACHDEP="unknown"
+ 		AC_MSG_ERROR([cross build not supported for $host])
+ 	esac
+-	ac_sys_release=
+     else
+ 	ac_sys_system=`uname -s`
+ 	if test "$ac_sys_system" = "AIX" \

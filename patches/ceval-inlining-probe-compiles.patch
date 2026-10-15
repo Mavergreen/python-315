@@ -1,0 +1,86 @@
+Subject: configure: decide the ceval inlining limit by compiling, not running
+
+configure asks whether the compiler is Clang 22, which needs
+-finline-max-stacksize=512 in CFLAGS_CEVAL (gh-148284: without it a
+computed-goto _PyEval_EvalFrameDefault() uses about 40 kB of stack per
+call on x86-64). The probe only reads predefined macros, but it is a run
+test, so a cross build answers "undefined" and builds ceval.c without the
+limit. Compiling the probe gives the same answer as running it, natively
+and cross.
+
+Upstreamable as is. Drop it when CPython's probe no longer needs to run.
+
+--- a/configure
++++ b/configure
+@@ -31204,37 +31204,27 @@
+ 
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking if we need to manually block large inlining in ceval.c" >&5
+ printf %s "checking if we need to manually block large inlining in ceval.c... " >&6; }
+-if test "$cross_compiling" = yes
+-then :
+-  block_huge_inlining_in_ceval=undefined
+-else case e in #(
+-  e) cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+ /* end confdefs.h.  */
+ 
+-int main(void) {
+ // See gh-148284: Clang 22 seems to have interactions with inlining
+ // and the stackref buffer which cause 40 kB of stack usage on x86-64
+ // in buggy versions of _PyEval_EvalFrameDefault() in computed goto
+ // interpreter. The normal usage seen is normally 1-2 kB.
+ #if defined(__clang__) && (__clang_major__ == 22)
+-    return 1;
+-#else
+-    return 0;
++#error "Clang 22"
+ #endif
+-}
++int main(void) { return 0; }
+ 
+ _ACEOF
+-if ac_fn_c_try_run "$LINENO"
++if ac_fn_c_try_compile "$LINENO"
+ then :
+   block_huge_inlining_in_ceval=no
+ else case e in #(
+   e) block_huge_inlining_in_ceval=yes ;;
+ esac
+ fi
+-rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
+-  conftest.$ac_objext conftest.beam conftest.$ac_ext ;;
+-esac
+-fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
+ 
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $block_huge_inlining_in_ceval" >&5
+ printf "%s\n" "$block_huge_inlining_in_ceval" >&6; }
+--- a/configure.ac
++++ b/configure.ac
+@@ -7605,22 +7605,18 @@
+ fi
+ 
+ AC_MSG_CHECKING([if we need to manually block large inlining in ceval.c])
+-AC_RUN_IFELSE([AC_LANG_SOURCE([[
+-int main(void) {
++AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+ // See gh-148284: Clang 22 seems to have interactions with inlining
+ // and the stackref buffer which cause 40 kB of stack usage on x86-64
+ // in buggy versions of _PyEval_EvalFrameDefault() in computed goto
+ // interpreter. The normal usage seen is normally 1-2 kB.
+ #if defined(__clang__) && (__clang_major__ == 22)
+-    return 1;
+-#else
+-    return 0;
++#error "Clang 22"
+ #endif
+-}
++int main(void) { return 0; }
+ ]])],
+ [block_huge_inlining_in_ceval=no],
+-[block_huge_inlining_in_ceval=yes],
+-[block_huge_inlining_in_ceval=undefined])
++[block_huge_inlining_in_ceval=yes])
+ AC_MSG_RESULT([$block_huge_inlining_in_ceval])
+ 
+ if test "$block_huge_inlining_in_ceval" = yes && test "$ac_cv_computed_gotos" = yes; then

@@ -12,6 +12,7 @@ is an input to the product; the *own upstream* is the thing this repo exists to 
 | clang22 (the compiler: the cross pkg off 10.9, the installed release on 10.9) | `components/clang22/version` | ✅ `github-releases` on `Mavergreen/clang-22`, `-mavericks.N` versioning | repackage |
 | Recaulk (`librecaulk.a`, linked into the x86_64 build) | `components/recaulk/version` | ✅ shipyard preset manager, `github-releases` on `Mavergreen/recaulk` | repackage |
 | MacOSX10.9 and 11.3 SDKs, Sparkle framework | `Mavergreen/shipyard@v1` | ✅ github-actions manager tracks the tag | `@v1` is a moving tag, so content moves without a path changing |
+| GNU make (build-only: runs CPython's Makefile, and nothing of it ships) | `components/make/version` (`VERSION`, `SHA256`) | ✅ `git-tags` on GNU's `make.git` moves `VERSION`; `SHA256` moves by hand | no release: nothing shipped changes. Retires when the family ships a make product, which the build then takes as a tool |
 
 ## How each ingredient is verified
 
@@ -25,6 +26,10 @@ can: SHA-1 or SHA-256, never a GPG signature or SHA3. `build/fetch-ingredient.sh
 - **SQLite:** against the SHA-256 pinned in `components/sqlite/version`. sqlite.org publishes only
   SHA3-256. The 3.54.0 pin was recorded from a tarball whose SHA3-256 and size matched sqlite.org's.
   A Renovate bump fails at the fetch, naming the SHA-256 it got, until `YEAR` and `SHA256` follow.
+- **GNU make:** against the SHA-256 pinned in `components/make/version`. GNU signs its tarballs with
+  GPG and publishes no checksum. The 4.4.1 pin was recorded from a tarball whose SHA-512 and size
+  matched pkgsrc's `devel/gmake/distinfo`. A Renovate bump fails at the fetch, naming the SHA-256 it
+  got, until `SHA256` follows.
 - **clang22, Recaulk:** shipyard's `fetch_product_pkg.sh`, against each release's `SHA256SUMS`. On
   10.9 the installed clang22 is used instead, and the build stops unless it is the pinned release.
 
@@ -42,6 +47,37 @@ can: SHA-1 or SHA-256, never a GPG signature or SHA3. `build/fetch-ingredient.sh
   `compression.zstd` can use worker threads.
 
 An archive that defines a symbol twice fails the build.
+
+## How CPython is built
+
+`build/build-python.sh` runs CPython's own `configure` and `make` from the release tarball's
+generated files, in the same hermetic environment as the static libraries, with a GNU make that
+`build/build-make.sh` builds from the pin with clang22 and make's own `build.sh`: a 10.9 box without
+the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
+
+- **Flags:** `--enable-shared --without-ensurepip --with-readline=editline --without-system-libmpdec`,
+  plus `--without-static-libpython`. A static `libpython3.15.a` would carry calls to Recaulk's
+  back-fills without Recaulk, so a program linked against it alone fails on 10.9; embedders link
+  the dylib. `--with-openssl=/nonexistent` stops configure looking for OpenSSL in the build host's
+  `/usr/local/ssl`, `/usr/pkg`, `/usr/local` and `/usr`, which would put those paths in the installed
+  build configuration; it goes when OpenSSL becomes an ingredient. A native build presets
+  `PYTHON_FOR_REGEN=/usr/bin/false`, so a target that regenerates sources fails instead of running
+  whatever `python` the host has.
+- **Ingredients:** the static libraries through `CPPFLAGS` and `LDFLAGS`, and on x86_64 Recaulk's
+  headers and `librecaulk.a`. `libpython3.15.dylib` exports Recaulk's back-fills (`clock_gettime`,
+  `openat`, ...) and hides Recaulk's internals.
+- **Modules:** `Modules/Setup.local` disables `_ssl` and `_hashlib` (no OpenSSL in this release:
+  `hashlib` uses CPython's built-in HACL\* code), and `_tkinter` and `_gdbm`, which are not offered.
+- **Install names:** `libpython3.15.dylib` is `@rpath/libpython3.15.dylib`, and each Mach-O that
+  loads it finds it through an rpath relative to itself, so the tree is relocatable.
+- **No C++:** nothing in this build compiles or links C++, and `tests/smoke-test.sh` fails if a
+  Mach-O loads a C++ runtime, since clang22's `CXX` here has no 10.9 libc++ handling.
+- **Patches:** each file in `patches/` says why it exists and when to drop it.
+- **Cross builds:** only x86_64 cross-builds (from an arm64 Mac); arm64 builds natively. The cross
+  build passes `configure` the answers its run tests give natively for x86_64 on 10.9, measured by
+  comparing a native and a cross `pyconfig.h`, which came out identical.
+- **Tests:** x86_64 runs on-target, never under Rosetta: on a host that cannot run a stage's arch
+  natively, `tests/smoke-test.sh` runs only its static checks.
 
 ## Declared state
 

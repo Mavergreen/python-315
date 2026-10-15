@@ -69,9 +69,29 @@
       "packageNameTemplate": "facebook/zstd",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "GNU make, build-only. Its version only: GNU signs with GPG and publishes no checksum, so SHA256 moves by hand, and until it does the bump's build fails at the fetch, naming the SHA-256 it got.",
+      "managerFilePatterns": [
+        "/^components/make/version$/"
+      ],
+      "matchStrings": [
+        "VERSION=(?<currentValue>\\S+)"
+      ],
+      "depNameTemplate": "make",
+      "packageNameTemplate": "https://git.savannah.gnu.org/git/make.git",
+      "datasourceTemplate": "git-tags"
     }
   ],
   "packageRules": [
+    {
+      "description": "GNU make tags its release candidates X.Y.9N and X.Y.Z.9N (4.3.90, 4.4.0.91); only releases may move the pin.",
+      "matchDepNames": [
+        "make"
+      ],
+      "allowedVersions": "/^\\d+\\.\\d+(\\.[0-8]?\\d)?$/"
+    },
     {
       "description": "The 315 line stays on 3.15.x. Not an automerge exception -- automerge is the family default (ship-if-green) and still applies; this only stops Renovate from walking the line onto a Python minor it was never built for.",
       "matchDepNames": [

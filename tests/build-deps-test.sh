@@ -34,8 +34,9 @@ for arch in x86_64 arm64; do
       [ "$s_minos" = "$MACOSX_DEPLOYMENT_TARGET" ] || fail "$lib records minos $s_minos, not $MACOSX_DEPLOYMENT_TARGET"
       why="$(shipyard_sdk_rule "$s_arch" "$s_ft" "$s_minos" "$s_sdk")" || fail "$lib: $why"
     done < "$t/slices"
-    leaks="$("$CLANG22_BIN/llvm-strings" "$out/lib/$lib" | grep -E '/opt/pkg|/opt/local|/opt/homebrew|/sw/|/usr/local/' \
-      | grep -v '/usr/local/mavergreen/' || true)"
+    "$CLANG22_BIN/llvm-strings" "$out/lib/$lib" > "$t/strings" || fail "llvm-strings cannot read $lib"
+    [ -s "$t/strings" ] || fail "llvm-strings found no strings in $lib, so the prefix scan would see nothing"
+    leaks="$(grep -E '/opt/pkg|/opt/local|/opt/homebrew|/sw/|/usr/local/' "$t/strings" | grep -v '/usr/local/mavergreen/' || true)"
     [ -z "$leaks" ] || fail "$lib names a contaminating prefix: $leaks"
   done
   # shellcheck disable=SC2086

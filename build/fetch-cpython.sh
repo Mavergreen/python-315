@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 #   usage: build/fetch-cpython.sh [--version V] [--dest DIR]
 #          Prints the path of a freshly extracted CPython source tree whose tarball matched
 #          python.org's published SHA-256 and size; exits 1 on any verification failure.

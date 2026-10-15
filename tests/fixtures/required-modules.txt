@@ -1,0 +1,14 @@
+sqlite3
+ctypes
+lzma
+bz2
+zlib
+readline
+decimal
+_decimal
+uuid
+pyexpat
+zoneinfo
+compression.zstd
+dbm.ndbm
+hashlib

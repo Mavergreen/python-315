@@ -1,9 +1,9 @@
 #!/bin/sh
 # platform: host-agnostic
-#   usage: build/fetch-ingredient.sh sqlite|xz|zstd [--dest DIR]
+#   usage: build/fetch-ingredient.sh sqlite|xz|zstd|make [--dest DIR]
 #          Prints the path of a freshly extracted DIR/<tree> of the release components/<name>/version
 #          pins, verified first with shasum: zstd against upstream's zstd-<version>.tar.gz.sha256,
-#          fetched afresh every run; sqlite and xz against the SHA256 in their pin file.
+#          fetched afresh every run; sqlite, xz and make against the SHA256 in their pin file.
 #          Tarballs are cached in $MAVERICKS_BUILD_ROOT/python-315/ingredients-cache and verified on
 #          every use. Exit 1 on any fetch or verification failure, 2 on a usage error.
 #          Fixture mode: PY_INGREDIENT_BASE_URL replaces the directory each file is downloaded from
@@ -13,7 +13,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/msc.sh"
 . "$SHIPYARD_SCRIPTS/mavericks_fetch.sh"
 
-usage() { echo "usage: fetch-ingredient.sh sqlite|xz|zstd [--dest DIR]" >&2; exit 2; }
+usage() { echo "usage: fetch-ingredient.sh sqlite|xz|zstd|make [--dest DIR]" >&2; exit 2; }
 [ "$#" -ge 1 ] || usage
 name=$1; shift
 tmp="${TMPDIR:-/tmp}"
@@ -26,7 +26,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 pinfile="${PY_COMPONENTS:-$here/../components}/$name/version"
-case "$name" in sqlite|xz|zstd) ;; *) usage ;; esac
+case "$name" in sqlite|xz|zstd|make) ;; *) usage ;; esac
 [ -f "$pinfile" ] || { echo "fetch-ingredient: no pin file $pinfile" >&2; exit 2; }
 
 key() { sed -n "s/^$1=//p" "$pinfile" | tr -d '[:space:]'; }
@@ -50,6 +50,11 @@ case "$name" in
     need "version" "$v"
     tarball="zstd-$v.tar.gz"; tree="zstd-$v"
     base="https://github.com/facebook/zstd/releases/download/v$v" ;;
+  make)
+    v="$(key VERSION)"; sha="$(key SHA256)"
+    need VERSION "$v"; need SHA256 "$sha"
+    tarball="make-$v.tar.gz"; tree="make-$v"
+    base="https://ftp.gnu.org/gnu/make" ;;
 esac
 base="${PY_INGREDIENT_BASE_URL:-$base}"
 
