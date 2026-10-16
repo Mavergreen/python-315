@@ -31,9 +31,9 @@ foreign_flag_paths() {
       "$_f_prefix"/lib/python3.15/_sysconfig_vars_*.json "$_f_prefix"/lib/pkgconfig/python3.pc \
       "$_f_prefix/bin/python3.15-config"; do
     [ -f "$_f" ] || fail "no $_f to scan"
+    grep -q -F /usr/local/mavergreen/python315 "$_f" || fail "$_f does not name the install prefix; the scan read nothing"
     grep -o -h -E -- "-(I|L|F|isystem ?|isysroot ?)/[^ '\"\\\\,]*" "$_f" >> "$t/flagpaths" || true
   done
-  [ -s "$t/flagpaths" ] || fail "the installed build configuration names no -I or -L path at all; the scan read nothing"
   sed -E 's/^-(I|L|F|isystem ?|isysroot ?)//' "$t/flagpaths" | sort -u | while read -r _f_path; do
     _f_ok=""
     for _f_allowed in "$@"; do
@@ -65,13 +65,22 @@ for arch in "$host" "$other"; do
   [ ! -f "$t/decoy-ran" ] || fail "the build ran the decoy pkg-config: $(cat "$t/decoy-ran")"
   prefix="$stage/usr/local/mavergreen/python315"
   [ -x "$prefix/bin/python3.15" ] || fail "no python3.15 in the stage"
-  py_toolchain "$arch" > /dev/null
-  foreign_flag_paths "$prefix" "$(py_build_root)" "$SDKROOT" "$CLANG22" /usr/local/mavergreen
+  foreign_flag_paths "$prefix" /usr/local/mavergreen
   [ ! -s "$t/foreign" ] || fail "the installed build configuration (config Makefile, _sysconfigdata, pkgconfig) names host paths: $(tr '\n' ' ' < "$t/foreign")"
+  br="$(py_build_root)"; brp="$(cd -P "$br" && pwd)"
+  case "${HOME:-/}" in /) fail "HOME is unset or /, so the scan cannot look for it" ;; esac
+  find "$prefix" -type f -exec grep -l -F -e "$br" -e "$brp" -e "$HOME" -e Library/Caches -e /var/folders {} + \
+    > "$t/hostpaths" 2> "$t/grep.err" || true
+  [ ! -s "$t/grep.err" ] || fail "could not scan the stage's files: $(cat "$t/grep.err")"
+  [ ! -s "$t/hostpaths" ] ||
+    fail "installed files, text or Mach-O, name the build root, \$HOME, Library/Caches or /var/folders: $(tr '\n' ' ' < "$t/hostpaths")"
+  find "$prefix" -type f -exec grep -l -F /usr/local/mavergreen/python315 {} + 2>/dev/null > "$t/control"
+  grep -q _sysconfigdata_ "$t/control" && grep -q 'bin/python3\.15$' "$t/control" ||
+    fail "the scan cannot find even the prefix in _sysconfigdata and python3.15"
   leaks="$(grep -r -l -e /opt/pkg "$stage" || true)"
   [ -z "$leaks" ] || fail "the stage names /opt/pkg in: $leaks"
   grep -r -l -e /usr/local/mavergreen/python315 "$prefix/lib" > /dev/null || fail "the stage scan cannot find even the prefix"
-  echo "PASS $arch: built from a PATH whose pkg-config and flags point at /opt/pkg; nothing in the stage names it, and its build configuration names no host path"
+  echo "PASS $arch: built from a PATH whose pkg-config and flags point at /opt/pkg; nothing in the stage names it, its build configuration names no host path, and no installed file, text or Mach-O, names the build host"
   [ "$arch" != "$host" ] || build_python="$prefix/bin/python3.15"
   rc=0; PY_STAGE="$stage" sh "$here/smoke-test.sh" || rc=$?
   case "$rc" in

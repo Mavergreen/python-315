@@ -36,6 +36,8 @@ build="$(uname -m | sed 's/^arm64$/aarch64/')-apple-darwin$(uname -r)"
 mkdir -p "$(py_build_root)"
 work="$(mktemp -d "$(py_build_root)/deps-$arch.XXXXXX")"
 mkdir -p "$work/src" "$work/obj"
+prefix_maps=""
+for d in "$work/src" "$(cd -P "$work/src" && pwd)"; do prefix_maps="$prefix_maps -ffile-prefix-map=$d=."; done
 
 compile() {
   _c_lib=$1; shift
@@ -44,7 +46,7 @@ compile() {
   for _c_src in "$@"; do
     _c_obj="$work/obj/$_c_lib/$(printf '%s' "${_c_src#"$work"/src/*/}" | tr / _).o"
     # shellcheck disable=SC2086
-    py_hermetic $CC $_c_flags -c "$_c_src" -o "$_c_obj" || { echo "build-deps: could not compile $_c_src" >&2; exit 1; }
+    py_hermetic $CC $_c_flags $prefix_maps -c "$_c_src" -o "$_c_obj" || { echo "build-deps: could not compile $_c_src" >&2; exit 1; }
   done
 }
 

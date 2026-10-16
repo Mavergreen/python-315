@@ -5,7 +5,9 @@
 #          build-deps.sh and, for x86_64, Recaulk, every step in a hermetic environment, and installs it
 #          to DIR/usr/local/mavergreen/python315 with install names relative to the tree. An arch other
 #          than this host's is a cross build and needs --build-python: a python3.15 of the same version
-#          that runs here; only x86_64 cross-builds. Works in a fresh
+#          that runs here; only x86_64 cross-builds. Debug info names sources and objects relative to the
+#          work directory (-ffile-prefix-map, -oso_prefix), and build/rewrite-config.sh rewrites the
+#          installed build configuration, so no installed file names a build-host path. Works in a fresh
 #          $MAVERICKS_BUILD_ROOT/python-315/cpython-<arch>.XXXXXX, kept only on failure.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -78,8 +80,11 @@ if [ "$arch" = x86_64 ]; then
   libs="$RECAULK_LIB -framework CoreFoundation -framework Security -framework CoreServices -framework IOKit -lobjc"
 fi
 
+srcrel="../${src#"$work"/}"
+[ -f "$work/build/$srcrel/configure" ] || die "$src is not under $work, so configure cannot run from build/ by a relative path"
+# spec: INGREDIENTS.md "Installed build configuration" -- a relative srcdir keeps getpath's -DVPATH free of build-host paths
 # shellcheck disable=SC2086
-( cd "$work/build" && py_hermetic /bin/sh "$src/configure" --build="$build" --host="$host" --prefix="$prefix" \
+( cd "$work/build" && py_hermetic /bin/sh "$srcrel/configure" --build="$build" --host="$host" --prefix="$prefix" \
     --enable-shared --without-ensurepip --with-readline=editline --without-system-libmpdec \
     --without-static-libpython --with-openssl=/nonexistent $cross $regen \
     CC="$CC" CPP="$CC -E" CXX="$CXX" AR="$AR" \
@@ -87,8 +92,13 @@ fi
   tail -40 "$work/configure.log" >&2; die "configure failed ($work/configure.log)"; }
 plat=""
 [ -z "$cross" ] || plat="_PYTHON_HOST_PLATFORM=macosx-$MACOSX_DEPLOYMENT_TARGET-$arch"
+prefix_maps=""
+for d in "$(py_build_root)" "$work" "$src"; do
+  for p in "$d" "$(cd -P "$d" && pwd)"; do prefix_maps="$prefix_maps -ffile-prefix-map=$p=."; done
+done
 # shellcheck disable=SC2086
-( cd "$work/build" && py_hermetic "$make" -j"$jobs" $plat ) > "$work/make.log" 2>&1 || {
+( cd "$work/build" && py_hermetic "$make" -j"$jobs" $plat CFLAGS_NODIST="${prefix_maps# }" \
+    LDFLAGS_NODIST=-Wl,-oso_prefix,. ) > "$work/make.log" 2>&1 || {
   tail -40 "$work/make.log" >&2; die "make failed ($work/make.log)"; }
 rm -rf "${stage:?}$prefix"
 # shellcheck disable=SC2086
@@ -118,5 +128,15 @@ if [ "$arch" = arm64 ] && [ -x /usr/bin/codesign ]; then
     /usr/bin/codesign --force --sign - -a arm64 "$f"
   done
 fi
+set -- --arch "$arch" --tree "$tree" --srcdir "$src" --srcdir-relative "$srcrel" --builddir "$work/build" --deps "$work/deps" \
+  --build-root "$(py_build_root)" --sdk "$SDKROOT" --clang22 "$CLANG22"
+[ "$arch" != x86_64 ] || set -- "$@" --recaulk-include "$RECAULK_INCLUDE" --recaulk-libs "$libs"
+sh "$here/rewrite-config.sh" "$@" > "$work/rewritten" || die "the installed build configuration still names build-host paths"
+pyrun="${build_python:-$tree/bin/python3.15}"
+while read -r rel; do
+  case "$rel" in *.py) ;; *) continue ;; esac
+  env -i HOME="$work" PATH=/usr/bin:/bin "$pyrun" -I -m compileall -q -f -o 0 -o 1 -o 2 -d "$prefix/${rel%/*}" "$tree/$rel" \
+    > "$work/recompile.log" 2>&1 || { cat "$work/recompile.log" >&2; die "could not recompile the rewritten $rel"; }
+done < "$work/rewritten"
 rm -rf "$work"
 echo "build-python: $arch staged at $tree" >&2

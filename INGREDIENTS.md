@@ -79,6 +79,32 @@ the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
 - **Cross builds:** only x86_64 cross-builds (from an arm64 Mac); arm64 builds natively. The cross
   build passes `configure` the answers its run tests give natively for x86_64 on 10.9, measured by
   comparing a native and a cross `pyconfig.h`, which came out identical.
+- **Installed build configuration:** `build/rewrite-config.sh` rewrites every installed text file that
+  names a build-host path (`_sysconfigdata`, the `_sysconfig_vars` JSON, the config `Makefile`,
+  `config.c`, the pkgconfig files), so a C extension built later against this Python reaches nothing
+  on the builder's machine. clang22 becomes `/usr/local/mavergreen/clang22`, with the same target
+  flags. On x86_64 the SDK becomes `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`, where Longboat
+  installs it; the family has no arm64 SDK path, so arm64 loses `-isysroot`, and an arm64 extension
+  build needs `SDKROOT` set: `CC` carries `--no-default-config` and clang22 never runs `xcrun`. The
+  static libraries' and Recaulk's flags go, since python links them already, and the source and
+  build directories become `LIBPL`, as sysconfig itself reports `srcdir` for an installed Python. `LIBDIR` stays the install path. Debug info names sources and objects relative to
+  the work directory (`-ffile-prefix-map`, `-oso_prefix`), not stripped, and configure runs by a
+  relative path from the build directory, upstream's out-of-tree form, so the `VPATH` that `getpath.c`
+  compiles in is relative too. The build fails if any
+  installed file, text or Mach-O, still names the build root, `$HOME`, `Library/Caches` or
+  `/var/folders`, and so does `tests/contamination-test.sh`.
+- **Universal tree:** `build/merge.sh` merges the x86_64 and arm64 stages with shipyard's
+  `lipo-merge-tree.sh`. `pyconfig.h` and `_sysconfigdata__darwin_darwin.py` differ by arch, so the
+  merged tree carries each slice's copy and picks by `__x86_64__`/`__arm64__`, and by the machine in
+  `_PYTHON_HOST_PLATFORM` (a cross build's target) or else `platform.machine()`, loading the slice's
+  module from its own directory. Three more per-arch files cannot pick at run time: the
+  `_sysconfig_vars` JSON,
+  `build-details.json` and the config `Makefile` ship as `<file>.x86_64` and `<file>.arm64`, listed in
+  `lib/python3.15/mavergreen-arch-files.txt`, and `build/link-arch-files.sh` links each plain name to
+  the installing Mac's arch. Any other non-Mach-O file that differs stops the merge, naming it. The merged
+  python recompiles the library as checked-hash `.pyc` files: compiling the same source twice does not
+  always give the same bytes, and the merge does not keep source mtimes. `tests/slice-parity-test.sh`
+  checks that both slices have the same extension modules and every required module.
 - **Tests:** x86_64 runs on-target, never under Rosetta: on a host that cannot run a stage's arch
   natively, `tests/smoke-test.sh` runs only its static checks.
 
