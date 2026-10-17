@@ -1,0 +1,23 @@
+Subject: remote_debug.h: terminate the path proc_regionfilename() returns
+
+On Mac OS X 10.9, proc_regionfilename() copies the region's path into the
+buffer and returns its length without writing a NUL. search_map_for_section()
+then reads its uninitialized stack buffer as a C string, so the file name it
+matches against "libpython"/"python" and the path it opens both carry
+whatever bytes follow, and every remote debugging call on a live process
+(sys.remote_exec, _remote_debugging's GCMonitor) fails with "Failed to find
+the PyRuntime section". The returned length is authoritative, so the path
+ends there.
+
+Upstreamable as is. Drop it when CPython terminates the path itself.
+
+--- a/Python/remote_debug.h
++++ b/Python/remote_debug.h
+@@ -624,6 +624,7 @@
+             address += size;
+             continue;
+         }
++        map_filename[path_len] = '\0';
+ 
+         char* filename = strrchr(map_filename, '/');
+         if (filename != NULL) {

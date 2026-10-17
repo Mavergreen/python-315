@@ -1,10 +1,5 @@
-test_math.FMATests.test_fma_single_round  # 10.9's libm fma() is inexact: fma(a-1, a+1, 1.0) returns -a*a where the exact result is a*a
-test_math.FMATests.test_fma_zero_result  # 10.9's libm fma() returns +0.0 where IEEE 754 requires -0.0
-test_gc_stats.TestLocalGCStats.test_all_interpreters_filter_for_local_process  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
-test_gc_stats.TestLocalGCStats.test_gc_stats_fields  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
-test_gc_stats.TestLocalGCStats.test_module_get_gc_stats_fields  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
-test_sys.TestRemoteExec.test_remote_exec_with_self_process  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
-test_audit.AuditTest.test_sys_remote_exec  # remote debugging cannot find a live process's PyRuntime section on 10.9 (not yet diagnosed)
+test_math.FMATests.test_fma_single_round  # 10.9's libm fma() is not fused: with a = 2**-50, fma(a-1, a+1, 1.0) returns -a*a where the exact result is a*a; fails until Recaulk overrides fma
+test_math.FMATests.test_fma_zero_result  # 10.9's libm fma() returns +0.0 for fma(1e-300, -1e-300, 0.0), where IEEE 754 requires -0.0; fails until Recaulk overrides fma
 test_locale.TestEnUSCollation.test_strcoll_with_diacritic  # 10.9's libc collates en_US.UTF-8 by code point, so 'à' sorts after 'b'
 test_locale.TestEnUSCollation.test_strxfrm_with_diacritic  # 10.9's libc collates en_US.UTF-8 by code point, so 'à' sorts after 'b'
 test_shutil.TestMisc.test_chown  # dir_fd is unavailable: CPython enables the *at() functions only when it runs on macOS 10.10 or later, so it never calls Recaulk's back-fills
