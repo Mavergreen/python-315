@@ -11,5 +11,9 @@ pip from the wheel CPython bundles. That pip installs wheels you already have on
 `ssl` it cannot reach PyPI, and anything it would download fails with an error. A later phase adds
 `ssl`.
 
+Another family product's packages, installed under `/usr/local/mavergreen/<product>/lib/python3.15/site-packages`,
+are importable without being copied in: a `.pth` file adds each such directory to `sys.path`. Those
+directories' own `.pth` files are not processed.
+
 This is an unofficial community build. It is not affiliated with, endorsed by or supported by the
 Python Software Foundation.

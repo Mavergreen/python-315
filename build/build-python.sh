@@ -106,6 +106,8 @@ rm -rf "${stage:?}$prefix"
   tail -40 "$work/install.log" >&2; die "make install failed ($work/install.log)"; }
 
 tree="$stage$prefix"
+sp="$tree/lib/python$(tr -d "[:space:]" < "$MAVERICKS_ROOT/UPSTREAM_VERSION" | cut -d. -f1,2)/site-packages"
+cp "$here/_mavergreen_family.py" "$here/mavergreen-family.pth" "$sp/" || die "could not install the family site-packages hook"
 lib="libpython$(tr -d '[:space:]' < "$MAVERICKS_ROOT/UPSTREAM_VERSION" | cut -d. -f1,2).dylib"
 [ -f "$tree/lib/$lib" ] || die "make install left no lib/$lib"
 INT="$CLANG22_BIN/llvm-install-name-tool"
@@ -138,5 +140,7 @@ while read -r rel; do
   env -i HOME="$work" PATH=/usr/bin:/bin "$pyrun" -I -m compileall -q -f -o 0 -o 1 -o 2 -d "$prefix/${rel%/*}" "$tree/$rel" \
     > "$work/recompile.log" 2>&1 || { cat "$work/recompile.log" >&2; die "could not recompile the rewritten $rel"; }
 done < "$work/rewritten"
+env -i HOME="$work" PATH=/usr/bin:/bin "$pyrun" -I -m compileall -q -f -o 0 -o 1 -o 2 -d "$prefix/${sp#"$tree"/}" "$sp/_mavergreen_family.py" \
+  > "$work/recompile.log" 2>&1 || { cat "$work/recompile.log" >&2; die "could not compile _mavergreen_family.py"; }
 rm -rf "$work"
 echo "build-python: $arch staged at $tree" >&2
