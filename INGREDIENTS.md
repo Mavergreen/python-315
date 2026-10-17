@@ -108,6 +108,37 @@ the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
 - **Tests:** x86_64 runs on-target, never under Rosetta: on a host that cannot run a stage's arch
   natively, `tests/smoke-test.sh` runs only its static checks.
 
+## How the pkg is made
+
+`build/package-pkg.sh` packages one stage, universal from `build/merge.sh` in CI or x86_64 alone from
+a native 10.9 build, as `python-<version>.pkg`: shipyard's `dev.mavergreen.base`, then
+`dev.mavergreen.python.python315`, with the 10.9.5 install floor and the Installer host arches that
+`python3.15` itself carries, so Apple Silicon installs a universal pkg natively.
+
+- **Pruned:** IDLE (`bin/idle3*`, `idlelib`), `tkinter` and `turtledemo`, since `_tkinter` is not built
+  and there is no Tcl/Tk.
+- **The test suite ships apart,** as `python-<version>-tests.tar.gz`: `lib/python3.15/test/` without
+  bytecode, 7.5 MB against the 40 MB it adds to the pkg with its three levels of `.pyc` files, on every
+  update. Unpacked into an installed prefix (`tar -xzof <tarball> -C /usr/local/mavergreen/python315`)
+  it gives the layout `tests/regrtest.sh` measured its known failures against. An upgrade removes it
+  with the rest of the tree. It is reproducible: an mtree spec, which 10.9's bsdtar 2.8.3 reads, gives
+  sorted entries owned by root:wheel and dated `SOURCE_DATE_EPOCH` (default 0), and `gzip -n` adds no
+  name or time.
+- **Exports:** `bin/python` is added, linking to `python3.15`, and only `python`, `python3` and
+  `python3.15` are exported: the helper links each as `<name>-315` always and bare while python315 is
+  selected. `pydoc3` and `python3-config` stay in the tree, by absolute path. Every manpage is
+  exported.
+- **Per-arch files:** for a universal tree the postinstall runs `libexec/link-arch-files.sh`, shipped
+  in the tree, for arm64 when `hw.optional.arm64` is 1 and x86_64 otherwise, on Installer's target
+  volume. A tree moved to a Mac of the other arch is relinked by running it again.
+
+## How the updater is built
+
+`CMakeLists.txt` is the Sparkle updater, "Mavericks Python 3.15", with the generic app icon by
+explicit opt-in. `build/build-updater.sh` builds it with clang22 (`RequireAppleClang` off), like
+everything else this repo compiles, once per arch, and merges the two into one universal app. Its
+public key is the family's, in `updater/ed25519_key.pub`.
+
 ## Declared state
 
 - upstream: UPSTREAM_VERSION
@@ -117,6 +148,3 @@ the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
 - xz: components/xz/version
 - zstd: components/zstd/version
 
-## Conformance deviations
-
-- floor:python315-*-arm64*.pkg: shipyard's checks run on modern Macs, so the arm64 slice's install floor is 11.0, not 10.9.5. A native 10.9 build ships x86_64 only; CI supplies arm64 until native clang22 has AArch64.
