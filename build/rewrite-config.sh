@@ -2,7 +2,7 @@
 # platform: host-agnostic
 #   usage: build/rewrite-config.sh --arch x86_64|arm64 --tree TREE --srcdir DIR [--srcdir-relative PATH]
 #              --builddir DIR --deps DIR --build-root DIR --sdk DIR --clang22 DIR
-#              [--recaulk-include DIR --recaulk-libs WORDS]
+#              [--recaulk-include DIR --recaulk-libs WORDS] [--build-python PATH]
 #          Rewrites every text file in TREE (an installed python315) that names a build-host path, prints
 #          each rewritten file's path relative to TREE, and removes the stale .pyc files of a rewritten .py.
 #          In the installed sysconfig, config Makefile, pkgconfig and the rest:
@@ -13,18 +13,21 @@
 #          - the static deps' -I/-L, Recaulk's -isystem and link words and any -ffile-prefix-map go;
 #          - the source directory (absolute, or as configure was given it relative to the build
 #            directory) and the build directory become LIBPL, sysconfig's srcdir for an installed Python;
-#          - a hermetic HOME under the build root becomes ~.
+#          - a hermetic HOME under the build root becomes ~;
+#          - a cross build's --build-python, an absolute PATH, names a tree two levels above it, and that
+#            tree becomes /usr/local/mavergreen/python315 (in CONFIG_ARGS and PYTHON_FOR_BUILD).
 #          Fails, naming each file, when any file in TREE, text or binary, still names one of those paths,
 #          the build root, $HOME, Library/Caches or /var/folders.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 usage() {
   echo "usage: build/rewrite-config.sh --arch x86_64|arm64 --tree TREE --srcdir DIR [--srcdir-relative PATH]" \
-    "--builddir DIR --deps DIR --build-root DIR --sdk DIR --clang22 DIR [--recaulk-include DIR --recaulk-libs WORDS]" >&2
+    "--builddir DIR --deps DIR --build-root DIR --sdk DIR --clang22 DIR [--recaulk-include DIR --recaulk-libs WORDS]" \
+    "[--build-python PATH]" >&2
   exit 2
 }
 die() { echo "rewrite-config: $*" >&2; exit 1; }
-arch=""; tree=""; srcdir=""; srcrel=""; builddir=""; deps=""; br=""; sdk=""; clang22=""; rinc=""; rlibs=""
+arch=""; tree=""; srcdir=""; srcrel=""; builddir=""; deps=""; br=""; sdk=""; clang22=""; rinc=""; rlibs=""; bpy=""
 while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || usage
   case "$1" in
@@ -39,6 +42,7 @@ while [ "$#" -gt 0 ]; do
     --clang22) clang22=$2 ;;
     --recaulk-include) rinc=$2 ;;
     --recaulk-libs) rlibs=$2 ;;
+    --build-python) bpy=$2 ;;
     *) usage ;;
   esac
   shift 2
@@ -51,8 +55,15 @@ if [ "$arch" = x86_64 ]; then
 else
   [ -z "$rinc$rlibs" ] || die "arm64 links no Recaulk"
 fi
+bpyroot=""
+if [ -n "$bpy" ]; then
+  case "$bpy" in /*) ;; *) die "--build-python $bpy is not an absolute path" ;; esac
+  bpyroot="${bpy%/*}"; bpyroot="${bpyroot%/*}"
+  [ -n "$bpyroot" ] || die "--build-python $bpy has no tree two levels above it"
+fi
 ver="$(tr -d '[:space:]' < "$here/../UPSTREAM_VERSION" | cut -d. -f1,2)"
-libpl="/usr/local/mavergreen/python315/lib/python$ver/config-$ver-darwin"
+prefix=/usr/local/mavergreen/python315
+libpl="$prefix/lib/python$ver/config-$ver-darwin"
 sdk109=/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk
 clang22_installed=/usr/local/mavergreen/clang22
 
@@ -68,6 +79,7 @@ spellings() {
   printf '%s\n' "$1"
 }
 : > "$t/rules"
+[ -z "$bpyroot" ] || for d in $(spellings "$bpyroot"); do [ "$d" = "$prefix" ] || rule map "$d" "$prefix"; done
 if [ "$arch" = x86_64 ]; then
   rule drop "$rlibs" ""
   for d in $(spellings "$rinc"); do rule drop "-isystem $d" ""; done
@@ -88,8 +100,8 @@ for d in $(spellings "$br"); do rule run "$d/home." "~"; done
 
 {
   for d in $(spellings "$br") $(spellings "$srcdir") $(spellings "$builddir") $(spellings "$deps") \
-      $(spellings "$sdk") $(spellings "$clang22") ${rinc:+$(spellings "$rinc")}; do
-    [ "$d" = "$clang22_installed" ] || printf '%s\n' "$d"
+      $(spellings "$sdk") $(spellings "$clang22") ${rinc:+$(spellings "$rinc")} ${bpyroot:+$(spellings "$bpyroot")}; do
+    [ "$d" = "$clang22_installed" ] || [ "$d" = "$prefix" ] || printf '%s\n' "$d"
   done
   case "${HOME:-/}" in /) ;; *) printf '%s\n' "$HOME" ;; esac
   printf '%s\n' Library/Caches /var/folders

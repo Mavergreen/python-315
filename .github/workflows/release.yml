@@ -1,0 +1,343 @@
+name: release
+
+on:
+  push:
+    branches-ignore: ['renovate/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      local_release:
+        description: "Cut a -mavericks.(N+1) repackage of the current upstream"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    release-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ver:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.full }}
+      publish: ${{ steps.ver.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - id: ver
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          LOCAL_RELEASE: ${{ inputs.local_release }}
+        run: |
+          set -eu
+          mode="$(sh "$SHIPYARD_SCRIPTS/release-mode.sh")"
+          out="$(sh build/version.sh "$mode")"
+          full="$(printf '%s\n' "$out" | sed -n 's/^FULL=//p')"
+          rel="$(printf '%s\n' "$out" | sed -n 's/^RELEASE=//p')"
+          [ -n "$full" ] || { echo "::error::version.sh gave no FULL= line: $out"; exit 1; }
+          [ "$GITHUB_REF_NAME" = main ] || rel=no
+          { echo "full=$full"; echo "release=$rel"; } >> "$GITHUB_OUTPUT"
+          echo "version=$full publish=$rel"
+
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: CPython's tarball matches python.org's SHA-256 and its release manager's Sigstore signature
+        env:
+          CPYTHON_SIGNER: hugo@python.org
+          CPYTHON_SIGNER_ISSUER: https://github.com/login/oauth
+        run: |
+          set -eu
+          V="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
+          src="$RUNNER_TEMP/cpython"
+          sh build/fetch-cpython.sh --dest "$src" > /dev/null
+          tarball="$src/Python-$V.tar.xz"
+          [ -f "$tarball" ] || { echo "::error::fetch-cpython.sh left no $tarball"; exit 1; }
+          . "$SHIPYARD_SCRIPTS/mavericks_fetch.sh"
+          shipyard_curl "https://www.python.org/ftp/python/$V/Python-$V.tar.xz.sigstore" "$tarball.sigstore"
+          python3 -m venv "$RUNNER_TEMP/sigstore"
+          "$RUNNER_TEMP/sigstore/bin/pip" install --quiet -r .github/sigstore-requirements.txt
+          "$RUNNER_TEMP/sigstore/bin/python" -m sigstore verify identity --bundle "$tarball.sigstore" \
+            --cert-identity "$CPYTHON_SIGNER" --cert-oidc-issuer "$CPYTHON_SIGNER_ISSUER" "$tarball"
+
+  tests:
+    runs-on: macos-26
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Build out of tree
+        run: echo "MAVERICKS_BUILD_ROOT=$RUNNER_TEMP/mm-build" >> "$GITHUB_ENV"
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+      - name: Ingredient pins are well declared
+        run: sh "$SHIPYARD_SCRIPTS/check-ingredient-pins.sh"
+      - name: The repo's tests, contamination included (arm64, then x86_64 cross, from an environment pointing at /opt/pkg)
+        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
+      - name: The tests must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+
+  build-arm64:
+    needs: [ver, source]
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Build out of tree
+        run: echo "MAVERICKS_BUILD_ROOT=$RUNNER_TEMP/mm-build" >> "$GITHUB_ENV"
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+      - name: Build arm64 natively
+        run: |
+          set -eu -o pipefail
+          sh build/build-python.sh --arch arm64 --stage "$MAVERICKS_BUILD_ROOT/stage-arm64" 2>&1 \
+            | tee "$RUNNER_TEMP/build-arm64.log"
+          if grep '^build-python: re-signing' "$RUNNER_TEMP/build-arm64.log"; then
+            echo "::error::the install-name rewrite broke an arm64 signature and build-python re-signed it; explain why before this ships"
+            exit 1
+          fi
+      - name: Smoke (static and runtime)
+        run: PY_STAGE="$MAVERICKS_BUILD_ROOT/stage-arm64" sh tests/smoke-test.sh
+      - name: Other family products' site-packages are found
+        run: PY_STAGE="$MAVERICKS_BUILD_ROOT/stage-arm64" sh tests/family-site-test.sh
+      - name: Pack the stage
+        run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/stage-arm64.tar.gz" -C "$MAVERICKS_BUILD_ROOT/stage-arm64" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stage-arm64
+          path: ${{ runner.temp }}/stage-arm64.tar.gz
+          retention-days: 7
+      - name: The build must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+
+  build-x86_64:
+    needs: [ver, build-arm64]
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Build out of tree
+        run: echo "MAVERICKS_BUILD_ROOT=$RUNNER_TEMP/mm-build" >> "$GITHUB_ENV"
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+      - uses: actions/download-artifact@v8
+        with: { name: stage-arm64, path: "${{ runner.temp }}/in" }
+      - name: Unpack the arm64 stage, whose python3.15 runs the cross build
+        run: |
+          set -eu
+          mkdir -p "$MAVERICKS_BUILD_ROOT/stage-arm64"
+          tar -xzf "$RUNNER_TEMP/in/stage-arm64.tar.gz" -C "$MAVERICKS_BUILD_ROOT/stage-arm64"
+      - name: Cross-build x86_64
+        run: |
+          sh build/build-python.sh --arch x86_64 \
+            --build-python "$MAVERICKS_BUILD_ROOT/stage-arm64/usr/local/mavergreen/python315/bin/python3.15" \
+            --stage "$MAVERICKS_BUILD_ROOT/stage-x86_64"
+      - name: Smoke (static only; x86_64 runs on-target, in vm-test)
+        run: |
+          set -eu
+          rc=0
+          PY_STAGE="$MAVERICKS_BUILD_ROOT/stage-x86_64" sh tests/smoke-test.sh > "$RUNNER_TEMP/smoke.log" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/smoke.log"
+          [ "$rc" -eq 77 ] && grep -q '^PASS static: ' "$RUNNER_TEMP/smoke.log" \
+            || { echo "::error::wanted the static checks to pass and the runtime half to skip (exit 77), got exit $rc"; exit 1; }
+      - name: Pack the stage
+        run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/stage-x86_64.tar.gz" -C "$MAVERICKS_BUILD_ROOT/stage-x86_64" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stage-x86_64
+          path: ${{ runner.temp }}/stage-x86_64.tar.gz
+          retention-days: 7
+      - name: The build must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+
+  package:
+    needs: [ver, build-arm64, build-x86_64]
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      V: ${{ needs.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Build out of tree
+        run: |
+          echo "MAVERICKS_BUILD_ROOT=$RUNNER_TEMP/mm-build" >> "$GITHUB_ENV"
+          echo "DIST=$RUNNER_TEMP/dist" >> "$GITHUB_ENV"
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+      - uses: actions/download-artifact@v8
+        with: { pattern: stage-*, path: "${{ runner.temp }}/in" }
+      - name: Unpack both stages
+        run: |
+          set -eu
+          for a in arm64 x86_64; do
+            mkdir -p "$MAVERICKS_BUILD_ROOT/stage-$a"
+            tar -xzf "$RUNNER_TEMP/in/stage-$a/stage-$a.tar.gz" -C "$MAVERICKS_BUILD_ROOT/stage-$a"
+          done
+      - name: Both slices carry the same extension modules and every required module
+        run: sh tests/slice-parity-test.sh "$MAVERICKS_BUILD_ROOT/stage-x86_64" "$MAVERICKS_BUILD_ROOT/stage-arm64"
+      - name: Merge into one universal tree
+        run: |
+          sh build/merge.sh --x86_64 "$MAVERICKS_BUILD_ROOT/stage-x86_64" --arm64 "$MAVERICKS_BUILD_ROOT/stage-arm64" \
+            --out "$MAVERICKS_BUILD_ROOT/stage-universal"
+      - name: The merge, on a real x86_64 stage
+        run: PY_STAGE="$MAVERICKS_BUILD_ROOT/stage-x86_64" sh tests/merge-test.sh
+      - name: Pin the version the ver job resolved
+        run: printf '%s\n' "$V" > VERSION
+      - name: Build the universal Sparkle updater
+        run: sh build/build-updater.sh --arch x86_64 --arch arm64 --out "$MAVERICKS_BUILD_ROOT/python315-updater.app"
+      - name: Package
+        run: |
+          set -eu
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"; export SOURCE_DATE_EPOCH
+          sh build/package-pkg.sh --stage "$MAVERICKS_BUILD_ROOT/stage-universal" \
+            --updater-app "$MAVERICKS_BUILD_ROOT/python315-updater.app" --version "$V" --out "$DIST"
+      - name: The real pkg, expanded and its postinstall run, on this arm64 Mac
+        run: |
+          PY_STAGE="$MAVERICKS_BUILD_ROOT/stage-universal" PY_UPDATER_APP="$MAVERICKS_BUILD_ROOT/python315-updater.app" \
+            sh tests/package-manifest-test.sh
+      - name: Release notes
+        run: |
+          set -eu
+          sh "$SHIPYARD_SCRIPTS/release-notes.sh" --tag "$V" --version "$V" --product Python \
+            --line "$(printf '%s' "$V" | cut -d. -f1,2)" --min-os 10.9.5 --out "$DIST/RELEASE_NOTES.md"
+      - name: Record the declared state in the notes
+        run: |
+          set -eu
+          digest="$(sh "$SHIPYARD_SCRIPTS/release-state.sh")"
+          sh "$SHIPYARD_SCRIPTS/release-state-record.sh" --notes-file "$DIST/RELEASE_NOTES.md" --digest "$digest"
+      - name: Sign the pkg and write its feed
+        if: needs.ver.outputs.publish == 'yes'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          printenv SPARKLE_PRIVATE_KEY | grep -q . || { echo "::error::SPARKLE_PRIVATE_KEY is not visible to this repo"; exit 1; }
+          sh "$SHIPYARD_SCRIPTS/sign_and_appcast.sh" --product python315 --feed-dir "$DIST" \
+            --channel-title "Python 3.15 for Mavericks" --version "$V" \
+            --pkg-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/$V/python-$V.pkg" \
+            --notes-file "$DIST/RELEASE_NOTES.md" --pkg "$DIST/python-$V.pkg" --min-os 10.9.5
+      - name: Unsigned stand-in feed (never published)
+        if: needs.ver.outputs.publish != 'yes'
+        run: sh "$SHIPYARD_SCRIPTS/stand-in-feeds.sh" "$DIST" "$V"
+      - name: Artifact conformance
+        run: |
+          set -eu
+          facts="$(sh "$SHIPYARD_SCRIPTS/artifact-facts.sh" "$DIST" "$V")"
+          printf '%s\n' "$facts" | sh "$SHIPYARD_SCRIPTS/check-artifact-conformance.sh"
+      - name: The feed is an upgrade on this line
+        if: needs.ver.outputs.publish == 'yes'
+        run: |
+          sh "$SHIPYARD_SCRIPTS/assert_appcast_upgradeable.sh" --appcast "$DIST/python315.xml" --version "$V" \
+            --upstream-glob "$(printf '%s' "$V" | cut -d. -f1,2).*"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mavergreen-python-315
+          path: |
+            ${{ runner.temp }}/dist/*.pkg
+            ${{ runner.temp }}/dist/*.tar.gz
+            ${{ runner.temp }}/dist/*.xml
+            ${{ runner.temp }}/dist/RELEASE_NOTES.md
+      - name: The packaging must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+
+  installed-arm64:
+    needs: [ver, package]
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      V: ${{ needs.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Build out of tree
+        run: echo "MAVERICKS_BUILD_ROOT=$RUNNER_TEMP/mm-build" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v8
+        with: { name: mavergreen-python-315, path: "${{ runner.temp }}/dist" }
+      - name: Install the pkg
+        run: sudo installer -pkg "$RUNNER_TEMP/dist/python-$V.pkg" -target /
+      - name: Smoke the installed tree
+        run: PY_STAGE=/ sh tests/smoke-test.sh
+      - name: Unpack the test suite into the installed prefix
+        run: sudo tar -xzof "$RUNNER_TEMP/dist/python-$V-tests.tar.gz" -C /usr/local/mavergreen/python315
+      - name: Regression suite, installed, arm64
+        run: |
+          set -eu -o pipefail
+          REGRTEST_CONTEXT=installed sh tests/regrtest.sh /usr/local/mavergreen/python315/bin/python3.15 \
+            tests/known-failures/arm64.txt 2>&1 | tee "$RUNNER_TEMP/regrtest-arm64.log"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: regrtest-arm64-log
+          path: ${{ runner.temp }}/regrtest-arm64.log
+          retention-days: 14
+
+  vm-test:
+    needs: [ver, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@v8
+        with: { name: mavergreen-python-315, path: dist }
+      - name: Install the pkg on Mac OS X 10.9, smoke it and run the regression suite there
+        uses: Mavergreen/mavericks-vm@v1
+        env:
+          PY_VERSION: ${{ needs.ver.outputs.version }}
+        with:
+          image-key: ${{ secrets.MAVERICKS_VM_KEY }}
+          envs: PY_VERSION
+          cpu: '4'
+          mem: '8192'
+          run: |
+            sw_vers
+            sudo -n true || { echo "the guest's user cannot sudo without a password, and installer needs root"; exit 1; }
+            sudo installer -pkg "dist/python-$PY_VERSION.pkg" -target /
+            PY_STAGE=/ sh tests/smoke-runtime.sh
+            PY_STAGE=/ sh tests/family-site-test.sh
+            sudo tar -xzof "dist/python-$PY_VERSION-tests.tar.gz" -C /usr/local/mavergreen/python315
+            sh -c 'REGRTEST_CONTEXT=installed sh tests/regrtest.sh /usr/local/mavergreen/python315/bin/python3.15 tests/known-failures/x86_64-10.9.txt; echo $? > regrtest.rc' 2>&1 \
+              | tee regrtest-x86_64-10.9.log
+            exit "$(cat regrtest.rc)"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: regrtest-x86_64-10.9-log
+          path: regrtest-x86_64-10.9.log
+          retention-days: 14
+
+  scan:
+    needs: [ver, package]
+    if: always() && needs.ver.outputs.publish == 'yes'
+    permissions: { actions: read, contents: read }
+    uses: Mavergreen/shipyard/.github/workflows/scan-for-key.yml@v1
+    with: { artifact: mavergreen-python-315 }
+    secrets: { SPARKLE_PRIVATE_KEY: "${{ secrets.SPARKLE_PRIVATE_KEY }}" }
+
+  publish:
+    needs: [ver, source, tests, build-arm64, build-x86_64, package, installed-arm64, vm-test, scan]
+    if: needs.ver.outputs.publish == 'yes'
+    permissions: { contents: write }
+    uses: Mavergreen/shipyard/.github/workflows/publish-release.yml@v1
+    with: { version: "${{ needs.ver.outputs.version }}", artifact: mavergreen-python-315 }

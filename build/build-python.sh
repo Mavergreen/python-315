@@ -41,6 +41,7 @@ else
   [ "$arch" = x86_64 ] || die "--arch $arch on this $host_arch host: only x86_64 cross-builds (configure's run-test answers below were measured for it); build $arch on a $arch Mac"
   host=x86_64-apple-darwin13
   [ -n "$build_python" ] || die "--arch $arch on this $host_arch host is a cross build, which needs --build-python"
+  case "$build_python" in /*) ;; *) build_python="$(pwd)/$build_python" ;; esac
   [ -x "$build_python" ] || die "--build-python $build_python is not an executable"
   want="$(tr -d '[:space:]' < "$MAVERICKS_ROOT/UPSTREAM_VERSION")"
   got="$(env -i PATH=/usr/bin:/bin "$build_python" -I -c 'import platform; print(platform.python_version())')" \
@@ -133,6 +134,7 @@ fi
 set -- --arch "$arch" --tree "$tree" --srcdir "$src" --srcdir-relative "$srcrel" --builddir "$work/build" --deps "$work/deps" \
   --build-root "$(py_build_root)" --sdk "$SDKROOT" --clang22 "$CLANG22"
 [ "$arch" != x86_64 ] || set -- "$@" --recaulk-include "$RECAULK_INCLUDE" --recaulk-libs "$libs"
+[ -z "$cross" ] || set -- "$@" --build-python "$build_python"
 sh "$here/rewrite-config.sh" "$@" > "$work/rewritten" || die "the installed build configuration still names build-host paths"
 pyrun="${build_python:-$tree/bin/python3.15}"
 while read -r rel; do

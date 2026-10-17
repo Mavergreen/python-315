@@ -111,6 +111,34 @@ is CONFIGURE_CPPFLAGS arm64 "''"
 grep -q -F 'lib/pkgconfig' "$t/out" && fail "the arm64 pkgconfig names no build-host path, yet was rewritten"
 cmp -s "$t/x86_64/lib/pkgconfig/python-$mm.pc" "$t/arm64/lib/pkgconfig/python-$mm.pc" || fail "the x86_64 pkgconfig still differs from arm64's: $(cat "$t/x86_64/lib/pkgconfig/python-$mm.pc")"
 
+mkdir -p "$t/stage-arm64$prefix/bin"
+ln -s "$t/stage-arm64" "$home/stage-arm64"
+bpy="$home/stage-arm64$prefix/bin/python$mm"
+bpyp="$(cd -P "${bpy%/*}" && pwd)/python$mm"
+cross_stage() {
+  rm -rf "$t/x86_64"; stage x86_64
+  _sd="$t/x86_64/$x/_sysconfigdata__darwin_darwin.py"
+  sed "s|^ 'CONFIG_ARGS': \"|&'--with-build-python=$bpy' |" "$_sd" > "$t/sd" && cat "$t/sd" > "$_sd"
+  printf "PYTHON_FOR_BUILD=\t_PYTHON_PROJECT_BASE=. %s -E\nPYTHON_FOR_REGEN?=%s\n" "$bpy" "$bpyp" \
+    >> "$t/x86_64/$x/config-$mm-darwin/Makefile"
+}
+cross_stage
+if rewrite x86_64; then fail "a cross build's configuration naming its build python passed without --build-python"; fi
+cross_stage
+rewrite x86_64 --build-python "$bpy" || fail "the cross rewrite failed: $(cat "$t/out")"
+is CONFIG_ARGS x86_64 "\"'--with-build-python=$prefix/bin/python$mm' '--prefix=$prefix' 'CPPFLAGS=' 'LIBS='\""
+grep -q -x -F "PYTHON_FOR_BUILD=	_PYTHON_PROJECT_BASE=. $prefix/bin/python$mm -E" "$t/x86_64/$x/config-$mm-darwin/Makefile" \
+  || fail "PYTHON_FOR_BUILD became: $(grep PYTHON_FOR_BUILD "$t/x86_64/$x/config-$mm-darwin/Makefile")"
+grep -q -x -F "PYTHON_FOR_REGEN?=$prefix/bin/python$mm" "$t/x86_64/$x/config-$mm-darwin/Makefile" \
+  || fail "the build python's physical spelling became: $(grep PYTHON_FOR_REGEN "$t/x86_64/$x/config-$mm-darwin/Makefile")"
+cross_stage
+printf 'stab\000%s\n' "$bpyp" > "$t/x86_64/$x/leftover.so"
+if rewrite x86_64 --build-python "$bpy"; then fail "rewrite-config.sh passed a binary file naming the build python"; fi
+grep -q -F "$x/leftover.so" "$t/out" || fail "the refusal for the build python did not name the file: $(cat "$t/out")"
+cross_stage
+if rewrite x86_64 --build-python "stage-arm64$prefix/bin/python$mm"; then fail "rewrite-config.sh took a relative --build-python"; fi
+grep -q 'is not an absolute path' "$t/out" || fail "the refusal of a relative --build-python does not say why: $(cat "$t/out")"
+
 for left in "$br/tools/make-4.4.1/bin/make" "$home/.netrc" "/Users/somebody/Library/Caches/x" "/private/var/folders/zz/T/x" \
     "/var/folders/zz/T/x" "binary:$bldp/Modules/_bisect.o"; do
   rm -rf "$t/x86_64"; stage x86_64
@@ -123,4 +151,4 @@ for left in "$br/tools/make-4.4.1/bin/make" "$home/.netrc" "/Users/somebody/Libr
 done
 
 if HOME="$home" sh "$script" --arch ppc --tree "$t/x86_64" > "$t/out" 2>&1; then fail "rewrite-config.sh took --arch ppc"; fi
-echo "PASS: rewrite-config maps clang22, the x86_64 SDK, sources and HOME to installed paths, drops arm64's SDK and the deps' and Recaulk's flags, and refuses any build-host path left"
+echo "PASS: rewrite-config maps clang22, the x86_64 SDK, sources, HOME and a cross build's build python to installed paths, drops arm64's SDK and the deps' and Recaulk's flags, and refuses any build-host path left"

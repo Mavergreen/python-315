@@ -13,12 +13,18 @@ is an input to the product; the *own upstream* is the thing this repo exists to 
 | Recaulk (`librecaulk.a`, linked into the x86_64 build) | `components/recaulk/version` | ✅ shipyard preset manager, `github-releases` on `Mavergreen/recaulk` | repackage |
 | MacOSX10.9 and 11.3 SDKs, Sparkle framework | `Mavergreen/shipyard@v1` | ✅ github-actions manager tracks the tag | `@v1` is a moving tag, so content moves without a path changing |
 | GNU make (build-only: runs CPython's Makefile, and nothing of it ships) | `components/make/version` (`VERSION`, `SHA256`) | ✅ `git-tags` on GNU's `make.git` moves `VERSION`; `SHA256` moves by hand | no release: nothing shipped changes. Retires when the family ships a make product, which the build then takes as a tool |
+| sigstore-python (CI only: checks CPython's signature, and nothing of it ships) | `.github/sigstore-requirements.txt` | ✅ Renovate's `pip_requirements` manager | no release: nothing shipped changes |
 
 ## How each ingredient is verified
 
 A native 10.9 build verifies every download with the OS's own `shasum`, so it checks only what that
 can: SHA-1 or SHA-256, never a GPG signature or SHA3. `build/fetch-ingredient.sh` does the fetching.
 
+- **CPython:** against the SHA-256 and size python.org's downloads API publishes for the release
+  (`build/fetch-cpython.sh`), on every build, 10.9 included. `release.yml` also verifies the tarball's
+  Sigstore bundle with sigstore-python, as signed by the 3.15 release manager (`hugo@python.org`, issuer
+  `https://github.com/login/oauth`, per python.org's signature-verification page), before either
+  arch builds. A native 10.9 build cannot run sigstore-python, so it has the SHA-256 alone.
 - **zstd:** against the `zstd-<version>.tar.gz.sha256` upstream attaches to each release, fetched
   afresh every run. A tarball the file does not list fails.
 - **xz:** against the SHA-256 pinned in `components/xz/version`. Upstream signs its tarballs with GPG
@@ -106,7 +112,11 @@ the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
   always give the same bytes, and the merge does not keep source mtimes. `tests/slice-parity-test.sh`
   checks that both slices have the same extension modules and every required module.
 - **Tests:** x86_64 runs on-target, never under Rosetta: on a host that cannot run a stage's arch
-  natively, `tests/smoke-test.sh` runs only its static checks.
+  natively, `tests/smoke-test.sh` runs only its static checks. `release.yml` installs the universal
+  pkg twice before publishing: on an arm64 runner, where it runs `tests/smoke-test.sh` and the
+  regression suite against `tests/known-failures/arm64.txt`, and in mavericks-vm on Mac OS X 10.9.5,
+  where it runs `tests/smoke-runtime.sh` (the runtime half, which needs no clang22 or shipyard) and
+  the regression suite against `tests/known-failures/x86_64-10.9.txt`.
 
 ## How the pkg is made
 

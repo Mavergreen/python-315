@@ -1,0 +1,19 @@
+name: repackage-on-ingredient-bump
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - components/clang22/version
+      - components/recaulk/version
+      - components/sqlite/version
+      - components/xz/version
+      - components/zstd/version
+
+jobs:
+  repackage:
+    permissions:
+      actions: write
+    uses: Mavergreen/shipyard/.github/workflows/repackage-on-ingredient-bump.yml@v1
+    with:
+      own-upstream-paths: UPSTREAM_VERSION
