@@ -13,6 +13,7 @@ is an input to the product; the *own upstream* is the thing this repo exists to 
 | Recaulk (`librecaulk.a`, linked into the x86_64 build) | `components/recaulk/version` | ✅ shipyard preset manager, `github-releases` on `Mavergreen/recaulk` | repackage |
 | MacOSX10.9 and 11.3 SDKs, Sparkle framework | `Mavergreen/shipyard@v1` | ✅ github-actions manager tracks the tag | `@v1` is a moving tag, so content moves without a path changing |
 | GNU make (build-only: runs CPython's Makefile, and nothing of it ships) | `components/make/version` (`VERSION`, `SHA256`) | ✅ `git-tags` on GNU's `make.git` moves `VERSION`; `SHA256` moves by hand | no release: nothing shipped changes. Retires when the family ships a make product, which the build then takes as a tool |
+| longboat (CI only: installed-arm64 installs it because clang22-cross's preinstall requires it, and nothing of it ships) | `components/longboat/version` | ✅ `github-releases` on `Mavergreen/longboat`, `YYYYMMDD.N` versioning | no release: nothing shipped changes |
 | sigstore-python (CI only: checks CPython's signature, and nothing of it ships) | `.github/sigstore-requirements.txt` | ✅ Renovate's `pip_requirements` manager | no release: nothing shipped changes |
 
 ## How each ingredient is verified
