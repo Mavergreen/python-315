@@ -280,7 +280,7 @@ jobs:
           set -eu
           ver="$(tr -d '[:space:]' < components/clang22/version)"
           pkg="$(sh "$SHIPYARD_SCRIPTS/fetch-release-pkg.sh" clang-22 "$ver" "mavericks-clang-22-cross-$ver.pkg" "$RUNNER_TEMP/clang22-cross")"
-          sudo installer -pkg "$pkg" -target /
+          sudo installer -pkg "$pkg" -target / || { sudo tail -80 /var/log/install.log; exit 1; }
           cc="$(/usr/local/mavergreen/python315/bin/python3.15 -I -c 'import sysconfig; print(sysconfig.get_config_var("CC").split()[0])')"
           [ -f "$cc" ] && [ -x "$cc" ] || { echo "::error::installed clang22-cross $ver, yet the arm64 CC, $cc, is not an executable file"; exit 1; }
       - name: Regression suite, installed, arm64
