@@ -275,9 +275,14 @@ jobs:
         run: PY_STAGE=/ sh tests/smoke-test.sh
       - name: Unpack the test suite into the installed prefix
         run: sudo tar -xzof "$RUNNER_TEMP/dist/python-$V-tests.tar.gz" -C /usr/local/mavergreen/python315
-      - name: Install the pinned clang22-cross, the compiler the arm64 slice's sysconfig names
+      - name: Install longboat, then the pinned clang22-cross, the compiler the arm64 slice's sysconfig names
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          lb="$(gh release view -R Mavergreen/longboat --json tagName --jq .tagName)"
+          lbpkg="$(sh "$SHIPYARD_SCRIPTS/fetch-release-pkg.sh" longboat "$lb" "longboat-$lb.pkg" "$RUNNER_TEMP/longboat")"
+          sudo installer -pkg "$lbpkg" -target / || { sudo tail -80 /var/log/install.log; exit 1; }
           ver="$(tr -d '[:space:]' < components/clang22/version)"
           pkg="$(sh "$SHIPYARD_SCRIPTS/fetch-release-pkg.sh" clang-22 "$ver" "mavericks-clang-22-cross-$ver.pkg" "$RUNNER_TEMP/clang22-cross")"
           sudo installer -pkg "$pkg" -target / || { sudo tail -80 /var/log/install.log; exit 1; }
