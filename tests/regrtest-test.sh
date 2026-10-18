@@ -109,7 +109,7 @@ says 'does not list: test_crashy$' "flaky: hides only itself"
 printf '#!/bin/sh\n' > "$t/clang"; chmod 755 "$t/clang"; printf 'not a compiler\n' > "$t/plain"
 sed 's/^test_crashy /nocompiler: test_crashy /' "$all" > "$t/known"
 run "$fx/failure.log" 2 || { echo "FAIL a nocompiler: failure with no compiler named: $(cat "$t/out")"; exit 1; }
-says 'compiler is absent' "nocompiler: with no compiler named"
+says 'toolchain is absent (CC is empty)' "nocompiler: with no compiler named"
 for cc in "/nonexistent/clang --target=x" "$t/plain --target=x" "$t"; do
   run "$fx/failure.log" 2 || { echo "FAIL a nocompiler: failure with CC $cc, not an executable file: $(cat "$t/out")"; exit 1; }
 done
@@ -117,6 +117,14 @@ cc="$t/clang --no-default-config --target=x"
 if run "$fx/failure.log" 2; then echo "FAIL a nocompiler: failure passed with the compiler present"; exit 1; fi
 says 'does not list: test_crashy$' "nocompiler: with the compiler present"
 says "compiler $t/clang is present" "nocompiler: names the compiler it found"
+mkdir "$t/sdk"
+cc="$t/clang --no-default-config --target=x -isysroot $t/nosdk -fuse-ld=lld"
+run "$fx/failure.log" 2 || { echo "FAIL a nocompiler: failure with the compiler present and its -isysroot missing: $(cat "$t/out")"; exit 1; }
+says "toolchain is absent (SDK $t/nosdk is not a directory)" "nocompiler: names the SDK it did not find"
+cc="$t/clang --no-default-config --target=x -isysroot $t/sdk -fuse-ld=lld"
+if run "$fx/failure.log" 2; then echo "FAIL a nocompiler: failure passed with the compiler and its SDK present"; exit 1; fi
+says 'does not list: test_crashy$' "nocompiler: with the compiler and its SDK present"
+says "compiler $t/clang and SDK $t/sdk are present" "nocompiler: names the SDK it found"
 { cat "$all"; echo 'nocompiler: test_os.ExecTests.test_whatever  # canned: builds an extension'; } > "$t/known"
 run "$fx/failure.log" 2 || { echo "FAIL a passing nocompiler: test with the compiler present: $(cat "$t/out")"; exit 1; }
 cc=""

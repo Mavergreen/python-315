@@ -17,26 +17,26 @@ src="$work/src/Python-$ver"; bld="$work/build"; deps="$work/deps"
 recaulk="$br/toolchain/recaulk-1"
 clang="$br/toolchain/clang22-cross-1"
 home="$t/home"
-sdk="$home/Library/Caches/mavericks-sdk/MacOSX10.9.sdk"
-mkdir -p "$src" "$bld" "$deps" "$recaulk" "$clang" "$sdk" "$br/home.Xy34Zw"
+sdk109="$home/Library/Caches/mavericks-sdk/MacOSX10.9.sdk"; sdk113="$home/Library/Caches/mavericks-sdk/MacOSX11.3.sdk"
+mkdir -p "$src" "$bld" "$deps" "$recaulk" "$clang" "$sdk109" "$sdk113" "$br/home.Xy34Zw"
 bldp="$(cd -P "$bld" && pwd)"
 libs="$recaulk/lib/librecaulk.a -framework Security -lobjc"
 
 stage() {
   _arch=$1; _tree="$t/$_arch"; _l="$_tree/lib/python$mm"
   case "$_arch" in
-    x86_64) _tgt=x86_64-apple-macos10.9; _cpp="-I$deps/include -isystem $recaulk/include/recaulk"; _libs="$libs" ;;
-    arm64) _tgt=arm64-apple-macos11.0; _cpp="-I$deps/include"; _libs="" ;;
+    x86_64) _tgt=x86_64-apple-macos10.9; _cpp="-I$deps/include -isystem $recaulk/include/recaulk"; _libs="$libs"; _sdk=$sdk109 ;;
+    arm64) _tgt=arm64-apple-macos11.0; _cpp="-I$deps/include"; _libs=""; _sdk=$sdk113 ;;
   esac
   mkdir -p "$_l/config-$mm-darwin" "$_tree/lib/pkgconfig" "$_tree/bin"
   cat > "$_l/_sysconfigdata__darwin_darwin.py" <<EOF
 build_time_vars = {
- 'CC': '$clang/bin/clang --no-default-config --target=$_tgt -isysroot $sdk -fuse-ld=lld',
+ 'CC': '$clang/bin/clang --no-default-config --target=$_tgt -isysroot $_sdk -fuse-ld=lld',
  'CONFIGURE_CPPFLAGS': '$_cpp',
  'CONFIGURE_LDFLAGS': '-L$deps/lib -Wl,-headerpad_max_install_names',
  'CONFIG_ARGS': "'--prefix=$prefix' 'CPPFLAGS=$_cpp' 'LIBS=$_libs'",
  'LIBS': '-ldl $_libs -framework CoreFoundation',
- 'MODULE__CTYPES_CFLAGS': '-fno-strict-overflow -I$sdk/usr/include/ffi -DUSING_APPLE_OS_LIBFFI=1',
+ 'MODULE__CTYPES_CFLAGS': '-fno-strict-overflow -I$_sdk/usr/include/ffi -DUSING_APPLE_OS_LIBFFI=1',
  'PY_CPPFLAGS': '-IInclude -I$src/Include -I$deps/include',
  'CPPFLAGS': '-IInclude -I../src/Python-$ver/Include',
  'VPATH': '../src/Python-$ver',
@@ -61,8 +61,9 @@ EOF
 }
 rewrite() {
   _arch=$1; shift
+  case "$_arch" in x86_64) _sdk=$sdk109 ;; arm64) _sdk=$sdk113 ;; esac
   set -- --arch "$_arch" --tree "$t/$_arch" --srcdir "$src" --srcdir-relative "../src/Python-$ver" --builddir "$bld" --deps "$deps" --build-root "$br" \
-    --sdk "$sdk" --clang22 "$clang" "$@"
+    --sdk "$_sdk" --clang22 "$clang" "$@"
   [ "$_arch" = arm64 ] || set -- "$@" --recaulk-include "$recaulk/include/recaulk" --recaulk-libs "$libs"
   HOME="$home" sh "$script" "$@" > "$t/out" 2>&1
 }
@@ -105,8 +106,8 @@ if ls "$t/x86_64/$x/__pycache__"/_sysconfigdata__darwin_darwin.* > /dev/null 2>&
 
 stage arm64
 rewrite arm64 || fail "the arm64 rewrite failed: $(cat "$t/out")"
-is CC arm64 "'/usr/local/mavergreen/clang22-cross/bin/clang --no-default-config --target=arm64-apple-macos11.0 -fuse-ld=lld'"
-is MODULE__CTYPES_CFLAGS arm64 "'-fno-strict-overflow -DUSING_APPLE_OS_LIBFFI=1'"
+is CC arm64 "'/usr/local/mavergreen/clang22-cross/bin/clang --no-default-config --target=arm64-apple-macos11.0 -isysroot /usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk -fuse-ld=lld'"
+is MODULE__CTYPES_CFLAGS arm64 "'-fno-strict-overflow -I/usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk/usr/include/ffi -DUSING_APPLE_OS_LIBFFI=1'"
 is CONFIGURE_CPPFLAGS arm64 "''"
 grep -q -F 'CC = "/usr/local/mavergreen/clang22-cross/bin/clang"' "$t/arm64/bin/python$mm-config" || fail "arm64 python$mm-config's clang22 is not clang22-cross: $(cat "$t/arm64/bin/python$mm-config")"
 grep -q -F 'lib/pkgconfig' "$t/out" && fail "the arm64 pkgconfig names no build-host path, yet was rewritten"
@@ -152,4 +153,4 @@ for left in "$br/tools/make-4.4.1/bin/make" "$home/.netrc" "/Users/somebody/Libr
 done
 
 if HOME="$home" sh "$script" --arch ppc --tree "$t/x86_64" > "$t/out" 2>&1; then fail "rewrite-config.sh took --arch ppc"; fi
-echo "PASS: rewrite-config maps clang22 (x86_64) and clang22-cross (arm64), the x86_64 SDK, sources, HOME and a cross build's build python to installed paths, drops arm64's SDK and the deps' and Recaulk's flags, and refuses any build-host path left"
+echo "PASS: rewrite-config maps clang22 and the 10.9 SDK (x86_64), clang22-cross and the 11.3 SDK (arm64), sources, HOME and a cross build's build python to installed paths, drops the deps' and Recaulk's flags, and refuses any build-host path left"

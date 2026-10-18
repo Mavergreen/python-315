@@ -9,9 +9,10 @@
 #          - clang22 is where that arch's family compiler installs, with the same target flags:
 #            x86_64's /usr/local/mavergreen/clang22 (the 10.9 build) and arm64's
 #            /usr/local/mavergreen/clang22-cross (the clang22-cross pkg, which built the arm64 slice);
-#          - x86_64's SDK is /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk, where Longboat puts it;
-#          - arm64 has no family SDK path, so its -isysroot and SDK -I/-L flags go: an arm64 extension build
-#            needs SDKROOT set, since CC carries --no-default-config and clang22 never runs xcrun;
+#          - the SDK is where `longboat install` puts that arch's pinned SDK: x86_64's
+#            /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk and arm64's
+#            /usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk (a host SDK's .tbd stubs can be newer than
+#            clang22's ld64.lld reads);
 #          - the static deps' -I/-L, Recaulk's -isystem and any -ffile-prefix-map go;
 #          - Recaulk's link words go and leave their spaces, as configure spells an empty LIBS, so
 #            both slices' pkgconfig files match and merge;
@@ -68,10 +69,9 @@ fi
 ver="$(tr -d '[:space:]' < "$here/../UPSTREAM_VERSION" | cut -d. -f1,2)"
 prefix=/usr/local/mavergreen/python315
 libpl="$prefix/lib/python$ver/config-$ver-darwin"
-sdk109=/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk
 case "$arch" in
-  x86_64) clang22_installed=/usr/local/mavergreen/clang22 ;;
-  arm64) clang22_installed=/usr/local/mavergreen/clang22-cross ;;
+  x86_64) clang22_installed=/usr/local/mavergreen/clang22; sdk_installed=/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk ;;
+  arm64) clang22_installed=/usr/local/mavergreen/clang22-cross; sdk_installed=/usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk ;;
 esac
 
 t="$(mktemp -d "${TMPDIR:-/tmp}/rewrite-config.XXXXXX")"
@@ -93,12 +93,7 @@ if [ "$arch" = x86_64 ]; then
 fi
 for d in $(spellings "$deps"); do rule drop "-I$d" ""; rule drop "-L$d" ""; done
 for d in $(spellings "$br"); do rule drop "-ffile-prefix-map=$d" ""; done
-for d in $(spellings "$sdk"); do
-  case "$arch" in
-    x86_64) rule map "$d" "$sdk109" ;;
-    arm64) rule drop "-isysroot $d" ""; rule drop "-I$d" ""; rule drop "-L$d" "" ;;
-  esac
-done
+for d in $(spellings "$sdk"); do rule map "$d" "$sdk_installed"; done
 [ "$clang22" = "$clang22_installed" ] || for d in $(spellings "$clang22"); do rule map "$d" "$clang22_installed"; done
 [ -z "$srcrel" ] || for d in $(spellings "$builddir"); do rule map "$d/$srcrel" "$libpl"; done
 for d in $(spellings "$srcdir") $(spellings "$builddir"); do rule map "$d" "$libpl"; done

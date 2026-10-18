@@ -13,7 +13,7 @@ is an input to the product; the *own upstream* is the thing this repo exists to 
 | Recaulk (`librecaulk.a`, linked into the x86_64 build) | `components/recaulk/version` | ✅ shipyard preset manager, `github-releases` on `Mavergreen/recaulk` | repackage |
 | MacOSX10.9 and 11.3 SDKs, Sparkle framework | `Mavergreen/shipyard@v1` | ✅ github-actions manager tracks the tag | `@v1` is a moving tag, so content moves without a path changing |
 | GNU make (build-only: runs CPython's Makefile, and nothing of it ships) | `components/make/version` (`VERSION`, `SHA256`) | ✅ `git-tags` on GNU's `make.git` moves `VERSION`; `SHA256` moves by hand | no release: nothing shipped changes. Retires when the family ships a make product, which the build then takes as a tool |
-| longboat (CI only: installed-arm64 installs it because clang22-cross's preinstall requires it, and nothing of it ships) | `components/longboat/version` | ✅ `github-releases` on `Mavergreen/longboat`, `YYYYMMDD.N` versioning | no release: nothing shipped changes |
+| longboat (CI only: installed-arm64 installs it, because clang22-cross's preinstall requires it, and runs `longboat install 11.3` for the SDK the arm64 sysconfig names; nothing of it ships) | `components/longboat/version` | ✅ `github-releases` on `Mavergreen/longboat`, `YYYYMMDD.N` versioning | no release: nothing shipped changes |
 | sigstore-python (CI only: checks CPython's signature, and nothing of it ships) | `.github/sigstore-requirements.txt` | ✅ Renovate's `pip_requirements` manager | no release: nothing shipped changes |
 
 ## How each ingredient is verified
@@ -91,9 +91,11 @@ the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
   `config.c`, the pkgconfig files), so a C extension built later against this Python reaches nothing
   on the builder's machine. clang22 becomes the installed compiler of the pkg that built each slice,
   with the same target flags: `/usr/local/mavergreen/clang22` on x86_64 and
-  `/usr/local/mavergreen/clang22-cross` on arm64. On x86_64 the SDK becomes
-  `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`, where Longboat installs it; the family has no arm64 SDK path, so arm64 loses `-isysroot`, and an arm64 extension
-  build needs `SDKROOT` set: `CC` carries `--no-default-config` and clang22 never runs `xcrun`. The
+  `/usr/local/mavergreen/clang22-cross` on arm64. The SDK becomes the family's pinned SDK for that
+  arch, where `longboat install` puts it: `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk` on x86_64
+  and `/usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk` on arm64, not the host's SDK, whose `.tbd`
+  stubs can be newer than clang22's `ld64.lld` reads. So an x86_64 extension build needs clang22 and
+  `sudo longboat install 10.9`, and an arm64 one needs clang22-cross and `sudo longboat install 11.3`. The
   static libraries' and Recaulk's flags go, since python links them already, and the source and
   build directories become `LIBPL`, as sysconfig itself reports `srcdir` for an installed Python. `LIBDIR` stays the install path. Debug info names sources and objects relative to
   the work directory (`-ffile-prefix-map`, `-oso_prefix`), not stripped, and configure runs by a

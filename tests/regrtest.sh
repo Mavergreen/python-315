@@ -8,11 +8,12 @@
 #            stage: <test id>  # <reason>                     fails only when REGRTEST_CONTEXT is stage
 #            flaky: <test id>  # <reason>                     may fail or pass
 #            ignore: <test id>  # <reason>. Revisit when <exit>.   not run (regrtest --ignore)
-#            nocompiler: <test id>  # <reason>                fails only when <python>'s compiler is absent
+#            nocompiler: <test id>  # <reason>                fails only when <python>'s toolchain is absent
 #          A test id is a unittest id without its leading `test.` (test_math.FMATests.test_fma_zero_result),
 #          or a test file's name, which stands for whatever the file did besides failing tests: a crash,
 #          a timeout, a worker that exited non-zero.
-#          <python>'s compiler is absent when the first word of sysconfig's CC is not an executable file.
+#          <python>'s toolchain is absent when the first word of sysconfig's CC is not an executable file,
+#          or when CC's -isysroot names no directory.
 #          REGRTEST_CONTEXT defaults to installed when <python>'s prefix is its configured prefix (the
 #          parent of sysconfig's LIBDIR; sysconfig's own `prefix` follows sys.prefix), else stage. A stage run refuses a host where the configured prefix exists: a stage's copied venv
 #          interpreters would load that installed libpython through python3.15's fallback rpath.
@@ -34,7 +35,13 @@ print(sysconfig.get_config_var("CC") or "")')" || fail "$py could not report its
 real_prefix="$(printf '%s\n' "$prefixes" | sed -n 1p)"
 config_prefix="$(printf '%s\n' "$prefixes" | sed -n 2p)"
 cc="$(printf '%s\n' "$prefixes" | awk 'NR == 3 { print $1 }')"
-if [ -n "$cc" ] && [ -f "$cc" ] && [ -x "$cc" ]; then nocc=0; else nocc=1; fi
+sdk="$(printf '%s\n' "$prefixes" | awk 'NR == 3 { for (i = 1; i < NF; i++) if ($i == "-isysroot") { print $(i + 1); exit } }')"
+nocc=1
+if [ -z "$cc" ]; then absent="CC is empty"
+elif [ ! -f "$cc" ] || [ ! -x "$cc" ]; then absent="$cc is not an executable file"
+elif [ -n "$sdk" ] && [ ! -d "$sdk" ]; then absent="SDK $sdk is not a directory"
+else nocc=0
+fi
 [ -n "$real_prefix" ] && [ -n "$config_prefix" ] || fail "$py reported no prefix: $prefixes"
 installed_prefix=""
 [ ! -d "$config_prefix" ] || installed_prefix="$(cd -P "$config_prefix" && pwd -P)"
@@ -68,7 +75,9 @@ for f in listed flaky ignore; do LC_ALL=C sort -o "$t/$f" "$t/$f"; done
 set --
 while read -r id; do set -- "$@" --ignore "test.$id"; done < "$t/ignore"
 if [ "$nocc" -eq 1 ]; then
-  echo "regrtest: compiler is absent (${cc:-CC is empty}), so nocompiler: tests must fail"
+  echo "regrtest: the toolchain is absent ($absent), so nocompiler: tests must fail"
+elif [ -n "$sdk" ]; then
+  echo "regrtest: compiler $cc and SDK $sdk are present, so nocompiler: tests must pass"
 else
   echo "regrtest: compiler $cc is present, so nocompiler: tests must pass"
 fi

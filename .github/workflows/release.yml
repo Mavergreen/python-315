@@ -275,21 +275,24 @@ jobs:
         run: PY_STAGE=/ sh tests/smoke-test.sh
       - name: Unpack the test suite into the installed prefix
         run: sudo tar -xzof "$RUNNER_TEMP/dist/python-$V-tests.tar.gz" -C /usr/local/mavergreen/python315
-      - name: Install the pinned longboat, then the pinned clang22-cross, the compiler the arm64 slice's sysconfig names
+      - name: Install the pinned longboat and its 11.3 SDK, then the pinned clang22-cross, the compiler and SDK the arm64 slice's sysconfig names
         run: |
           set -eu
           lb="$(tr -d '[:space:]' < components/longboat/version)"
           lbpkg="$(sh "$SHIPYARD_SCRIPTS/fetch-release-pkg.sh" longboat "$lb" "longboat-$lb.pkg" "$RUNNER_TEMP/longboat")"
           sudo installer -pkg "$lbpkg" -target / || { sudo tail -80 /var/log/install.log; exit 1; }
+          sudo /usr/local/mavergreen/longboat/bin/longboat install 11.3 || { sudo tail -80 /var/log/install.log; exit 1; }
           ver="$(tr -d '[:space:]' < components/clang22/version)"
           pkg="$(sh "$SHIPYARD_SCRIPTS/fetch-release-pkg.sh" clang-22 "$ver" "mavericks-clang-22-cross-$ver.pkg" "$RUNNER_TEMP/clang22-cross")"
           sudo installer -pkg "$pkg" -target / || { sudo tail -80 /var/log/install.log; exit 1; }
-          cc="$(/usr/local/mavergreen/python315/bin/python3.15 -I -c 'import sysconfig; print(sysconfig.get_config_var("CC").split()[0])')"
+          ccline="$(/usr/local/mavergreen/python315/bin/python3.15 -I -c 'import sysconfig; print(sysconfig.get_config_var("CC"))')"
+          cc="$(printf '%s\n' "$ccline" | awk '{ print $1 }')"
+          sdk="$(printf '%s\n' "$ccline" | awk '{ for (i = 1; i < NF; i++) if ($i == "-isysroot") { print $(i + 1); exit } }')"
           [ -f "$cc" ] && [ -x "$cc" ] || { echo "::error::installed clang22-cross $ver, yet the arm64 CC, $cc, is not an executable file"; exit 1; }
+          [ -n "$sdk" ] && [ -d "$sdk" ] || { echo "::error::installed the 11.3 SDK, yet the arm64 CC's -isysroot, ${sdk:-(none)}, is not a directory"; exit 1; }
       - name: Regression suite, installed, arm64
         run: |
           set -eu -o pipefail
-          SDKROOT="$(xcrun --show-sdk-path)"; export SDKROOT
           REGRTEST_CONTEXT=installed sh tests/regrtest.sh /usr/local/mavergreen/python315/bin/python3.15 \
             tests/known-failures/arm64.txt 2>&1 | tee "$RUNNER_TEMP/regrtest-arm64.log"
       - uses: actions/upload-artifact@v7
