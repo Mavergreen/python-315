@@ -4,8 +4,9 @@
 #          Checks tests/slice-parity-test.sh, build/merge.sh and build/link-arch-files.sh on synthetic
 #          stages. Tiny trees, whose python3.15 is a stand-in that only writes .pyc names, need no build;
 #          the rest need PY_STAGE, an x86_64 stage from build/build-python.sh, whose copy stands in for the
-#          arm64 slice with its Mach-O replaced by arm64 headers. Exits 77 after the tiny cases when
-#          PY_STAGE is unset.
+#          arm64 slice with its Mach-O replaced by arm64 headers. Those run only on an x86_64 host: merge.sh
+#          runs the merged python3.15, and an arm64 host would run the stand-in headers. The tiny cases
+#          alone pass when PY_STAGE is unset or the host is not x86_64.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 MAVERICKS_ROOT="$(cd "$here/.." && pwd)"; export MAVERICKS_ROOT
@@ -181,6 +182,9 @@ echo "PASS tiny stages: slice parity names a module in one slice and each missin
 
 [ -n "${PY_STAGE:-}" ] || {
   echo "PASS: merge (ran: tiny stages; not run here: real stages, which need PY_STAGE, an x86_64 stage from build/build-python.sh)"
+  exit 0; }
+[ "$(uname -m)" = x86_64 ] || {
+  echo "PASS: merge (ran: tiny stages; not run here: real stages, whose merged python3.15 would run the arm64 stand-in on this $(uname -m) host)"
   exit 0; }
 [ -x "$PY_STAGE$prefix/bin/python3.15" ] || fail "no $PY_STAGE$prefix/bin/python3.15"
 py_toolchain x86_64 > /dev/null

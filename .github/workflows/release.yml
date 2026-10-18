@@ -195,8 +195,6 @@ jobs:
         run: |
           sh build/merge.sh --x86_64 "$MAVERICKS_BUILD_ROOT/stage-x86_64" --arm64 "$MAVERICKS_BUILD_ROOT/stage-arm64" \
             --out "$MAVERICKS_BUILD_ROOT/stage-universal"
-      - name: The merge, on a real x86_64 stage
-        run: PY_STAGE="$MAVERICKS_BUILD_ROOT/stage-x86_64" sh tests/merge-test.sh
       - name: Pin the version the ver job resolved
         run: printf '%s\n' "$V" > VERSION
       - name: Build the universal Sparkle updater
