@@ -10,7 +10,9 @@
 #          - x86_64's SDK is /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk, where Longboat puts it;
 #          - arm64 has no family SDK path, so its -isysroot and SDK -I/-L flags go: an arm64 extension build
 #            needs SDKROOT set, since CC carries --no-default-config and clang22 never runs xcrun;
-#          - the static deps' -I/-L, Recaulk's -isystem and link words and any -ffile-prefix-map go;
+#          - the static deps' -I/-L, Recaulk's -isystem and any -ffile-prefix-map go;
+#          - Recaulk's link words go and leave their spaces, as configure spells an empty LIBS, so
+#            both slices' pkgconfig files match and merge;
 #          - the source directory (absolute, or as configure was given it relative to the build
 #            directory) and the build directory become LIBPL, sysconfig's srcdir for an installed Python;
 #          - a hermetic HOME under the build root becomes ~;
@@ -81,7 +83,7 @@ spellings() {
 : > "$t/rules"
 [ -z "$bpyroot" ] || for d in $(spellings "$bpyroot"); do [ "$d" = "$prefix" ] || rule map "$d" "$prefix"; done
 if [ "$arch" = x86_64 ]; then
-  rule drop "$rlibs" ""
+  rule map "$rlibs" ""
   for d in $(spellings "$rinc"); do rule drop "-isystem $d" ""; done
 fi
 for d in $(spellings "$deps"); do rule drop "-I$d" ""; rule drop "-L$d" ""; done

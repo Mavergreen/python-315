@@ -25,7 +25,7 @@ libs="$recaulk/lib/librecaulk.a -framework Security -lobjc"
 stage() {
   _arch=$1; _tree="$t/$_arch"; _l="$_tree/lib/python$mm"
   case "$_arch" in
-    x86_64) _tgt=x86_64-apple-macos10.9; _cpp="-I$deps/include -isystem $recaulk/include/recaulk"; _libs="$libs " ;;
+    x86_64) _tgt=x86_64-apple-macos10.9; _cpp="-I$deps/include -isystem $recaulk/include/recaulk"; _libs="$libs" ;;
     arm64) _tgt=arm64-apple-macos11.0; _cpp="-I$deps/include"; _libs="" ;;
   esac
   mkdir -p "$_l/config-$mm-darwin" "$_tree/lib/pkgconfig" "$_tree/bin"
@@ -34,8 +34,8 @@ build_time_vars = {
  'CC': '$clang/bin/clang --no-default-config --target=$_tgt -isysroot $sdk -fuse-ld=lld',
  'CONFIGURE_CPPFLAGS': '$_cpp',
  'CONFIGURE_LDFLAGS': '-L$deps/lib -Wl,-headerpad_max_install_names',
- 'CONFIG_ARGS': "'--prefix=$prefix' 'CPPFLAGS=$_cpp' 'LIBS=${_libs% }'",
- 'LIBS': '-ldl ${_libs}-framework CoreFoundation',
+ 'CONFIG_ARGS': "'--prefix=$prefix' 'CPPFLAGS=$_cpp' 'LIBS=$_libs'",
+ 'LIBS': '-ldl $_libs -framework CoreFoundation',
  'MODULE__CTYPES_CFLAGS': '-fno-strict-overflow -I$sdk/usr/include/ffi -DUSING_APPLE_OS_LIBFFI=1',
  'PY_CPPFLAGS': '-IInclude -I$src/Include -I$deps/include',
  'CPPFLAGS': '-IInclude -I../src/Python-$ver/Include',
@@ -47,9 +47,9 @@ build_time_vars = {
 }
 EOF
   printf '{\n  "srcdir": "%s",\n  "userbase": "%s/home.Xy34Zw/.local"\n}' "$libpl" "$br" > "$_l/_sysconfig_vars__darwin_darwin.json"
-  printf 'prefix=%s\nsrcdir=\t\t%s\nabs_builddir=\t%s\nLIBS=\t\t-ldl %s-framework CoreFoundation\n' "$prefix" "$src" "$bldp" "$_libs" > "$_l/config-$mm-darwin/Makefile"
+  printf 'prefix=%s\nsrcdir=\t\t%s\nabs_builddir=\t%s\nLIBS=\t\t-ldl %s -framework CoreFoundation\n' "$prefix" "$src" "$bldp" "$_libs" > "$_l/config-$mm-darwin/Makefile"
   printf '/* Generated automatically from %s/Modules/config.c.in by makesetup. */\n' "$src" > "$_l/config-$mm-darwin/config.c"
-  printf 'prefix=%s\nLibs.private: -ldl %s-framework CoreFoundation\n' "$prefix" "$_libs" > "$_tree/lib/pkgconfig/python-$mm.pc"
+  printf 'prefix=%s\nLibs.private: -ldl %s -framework CoreFoundation\n' "$prefix" "$_libs" > "$_tree/lib/pkgconfig/python-$mm.pc"
   printf '#!%s/bin/python%s\nCC = "%s/bin/clang"\n' "$prefix" "$mm" "$clang" > "$_tree/bin/python$mm-config"
   chmod 755 "$_tree/bin/python$mm-config"
   printf 'import os\n' > "$_l/untouched.py"
@@ -83,7 +83,7 @@ is CC x86_64 "'/usr/local/mavergreen/clang22/bin/clang --no-default-config --tar
 is CONFIGURE_CPPFLAGS x86_64 "''"
 is CONFIGURE_LDFLAGS x86_64 "'-Wl,-headerpad_max_install_names'"
 is CONFIG_ARGS x86_64 "\"'--prefix=$prefix' 'CPPFLAGS=' 'LIBS='\""
-is LIBS x86_64 "'-ldl -framework CoreFoundation'"
+is LIBS x86_64 "'-ldl  -framework CoreFoundation'"
 is MODULE__CTYPES_CFLAGS x86_64 "'-fno-strict-overflow -I/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk/usr/include/ffi -DUSING_APPLE_OS_LIBFFI=1'"
 is PY_CPPFLAGS x86_64 "'-IInclude -I$libpl/Include'"
 is abs_builddir x86_64 "'$libpl'"
@@ -92,7 +92,7 @@ is VPATH x86_64 "'$libpl'"
 is abs_srcdir x86_64 "'$libpl'"
 is CPPFLAGS x86_64 "'-IInclude -I$libpl/Include'"
 grep -q '"userbase": "~/.local"' "$t/x86_64/$x/_sysconfig_vars__darwin_darwin.json" || fail "the hermetic HOME in userbase did not become ~: $(cat "$t/x86_64/$x/_sysconfig_vars__darwin_darwin.json")"
-printf 'prefix=%s\nsrcdir=\t\t%s\nabs_builddir=\t%s\nLIBS=\t\t-ldl -framework CoreFoundation\n' "$prefix" "$libpl" "$libpl" > "$t/want"
+printf 'prefix=%s\nsrcdir=\t\t%s\nabs_builddir=\t%s\nLIBS=\t\t-ldl  -framework CoreFoundation\n' "$prefix" "$libpl" "$libpl" > "$t/want"
 cmp -s "$t/want" "$t/x86_64/$x/config-$mm-darwin/Makefile" || fail "the config Makefile became: $(cat "$t/x86_64/$x/config-$mm-darwin/Makefile")"
 grep -q -F "from $libpl/Modules/config.c.in by" "$t/x86_64/$x/config-$mm-darwin/config.c" || fail "config.c became: $(cat "$t/x86_64/$x/config-$mm-darwin/config.c")"
 grep -q -F 'CC = "/usr/local/mavergreen/clang22/bin/clang"' "$t/x86_64/bin/python$mm-config" || fail "python$mm-config's clang22 path was not rewritten"
