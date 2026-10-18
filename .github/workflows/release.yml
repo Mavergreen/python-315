@@ -275,9 +275,18 @@ jobs:
         run: PY_STAGE=/ sh tests/smoke-test.sh
       - name: Unpack the test suite into the installed prefix
         run: sudo tar -xzof "$RUNNER_TEMP/dist/python-$V-tests.tar.gz" -C /usr/local/mavergreen/python315
+      - name: Install the pinned clang22-cross, the compiler the arm64 slice's sysconfig names
+        run: |
+          set -eu
+          ver="$(tr -d '[:space:]' < components/clang22/version)"
+          pkg="$(sh "$SHIPYARD_SCRIPTS/fetch-release-pkg.sh" clang-22 "$ver" "mavericks-clang-22-cross-$ver.pkg" "$RUNNER_TEMP/clang22-cross")"
+          sudo installer -pkg "$pkg" -target /
+          cc="$(/usr/local/mavergreen/python315/bin/python3.15 -I -c 'import sysconfig; print(sysconfig.get_config_var("CC").split()[0])')"
+          [ -f "$cc" ] && [ -x "$cc" ] || { echo "::error::installed clang22-cross $ver, yet the arm64 CC, $cc, is not an executable file"; exit 1; }
       - name: Regression suite, installed, arm64
         run: |
           set -eu -o pipefail
+          SDKROOT="$(xcrun --show-sdk-path)"; export SDKROOT
           REGRTEST_CONTEXT=installed sh tests/regrtest.sh /usr/local/mavergreen/python315/bin/python3.15 \
             tests/known-failures/arm64.txt 2>&1 | tee "$RUNNER_TEMP/regrtest-arm64.log"
       - uses: actions/upload-artifact@v7

@@ -8,9 +8,11 @@
 #            stage: <test id>  # <reason>                     fails only when REGRTEST_CONTEXT is stage
 #            flaky: <test id>  # <reason>                     may fail or pass
 #            ignore: <test id>  # <reason>. Revisit when <exit>.   not run (regrtest --ignore)
+#            nocompiler: <test id>  # <reason>                fails only when <python>'s compiler is absent
 #          A test id is a unittest id without its leading `test.` (test_math.FMATests.test_fma_zero_result),
 #          or a test file's name, which stands for whatever the file did besides failing tests: a crash,
 #          a timeout, a worker that exited non-zero.
+#          <python>'s compiler is absent when the first word of sysconfig's CC is not an executable file.
 #          REGRTEST_CONTEXT defaults to installed when <python>'s prefix is its configured prefix (the
 #          parent of sysconfig's LIBDIR; sysconfig's own `prefix` follows sys.prefix), else stage. A stage run refuses a host where the configured prefix exists: a stage's copied venv
 #          interpreters would load that installed libpython through python3.15's fallback rpath.
@@ -27,9 +29,12 @@ case "$2" in /*) known="$2" ;; *) known="$PWD/$2" ;; esac
 [ -x "$py" ] || fail "$py is not executable"
 prefixes="$("$py" -I -c 'import os, sys, sysconfig
 print(os.path.realpath(sys.prefix))
-print(os.path.dirname(sysconfig.get_config_var("LIBDIR")))')" || fail "$py could not report its prefix"
+print(os.path.dirname(sysconfig.get_config_var("LIBDIR")))
+print(sysconfig.get_config_var("CC") or "")')" || fail "$py could not report its prefix"
 real_prefix="$(printf '%s\n' "$prefixes" | sed -n 1p)"
 config_prefix="$(printf '%s\n' "$prefixes" | sed -n 2p)"
+cc="$(printf '%s\n' "$prefixes" | awk 'NR == 3 { print $1 }')"
+if [ -n "$cc" ] && [ -f "$cc" ] && [ -x "$cc" ]; then nocc=0; else nocc=1; fi
 [ -n "$real_prefix" ] && [ -n "$config_prefix" ] || fail "$py reported no prefix: $prefixes"
 installed_prefix=""
 [ ! -d "$config_prefix" ] || installed_prefix="$(cd -P "$config_prefix" && pwd -P)"
@@ -46,22 +51,27 @@ t="$(mktemp -d "${TMPDIR:-/tmp}/regrtest.XXXXXX")"
 trap 'rm -rf "$t"' EXIT
 
 : > "$t/listed"; : > "$t/flaky"; : > "$t/ignore"
-awk -v ctx="$context" -v d="$t" '
+awk -v ctx="$context" -v nocc="$nocc" -v d="$t" '
   /^[ \t]*$/ || /^#/ { next }
   { kind = "fails"; line = $0 }
-  match(line, /^(stage|flaky|ignore):[ \t]+/) { kind = substr(line, 1, index(line, ":") - 1); line = substr(line, RLENGTH + 1) }
+  match(line, /^(stage|flaky|ignore|nocompiler):[ \t]+/) { kind = substr(line, 1, index(line, ":") - 1); line = substr(line, RLENGTH + 1) }
   line !~ /^[A-Za-z0-9_.]+[ \t]+#[ \t]*[^ \t]/ {
-    printf "line %d is not `[stage:|flaky:|ignore:] <test id>  # <reason>`: %s\n", NR, $0; bad = 1; next }
+    printf "line %d is not `[stage:|flaky:|ignore:|nocompiler:] <test id>  # <reason>`: %s\n", NR, $0; bad = 1; next }
   { split(line, w, /[ \t]+/); id = w[1] }
   kind == "ignore" && line !~ /Revisit when [^ \t]/ {
     printf "line %d ignores %s without saying when to revisit it (`# <reason>. Revisit when <exit>.`)\n", NR, id; bad = 1; next }
   seen[id]++ { printf "line %d lists %s again\n", NR, id; bad = 1; next }
-  kind == "fails" || (kind == "stage" && ctx == "stage") { print id > (d "/listed"); next }
+  kind == "fails" || (kind == "stage" && ctx == "stage") || (kind == "nocompiler" && nocc) { print id > (d "/listed"); next }
   kind == "flaky" || kind == "ignore" { print id > (d "/" kind) }
   END { exit bad }' "$known" > "$t/known-errors" || fail "$known: $(cat "$t/known-errors")"
 for f in listed flaky ignore; do LC_ALL=C sort -o "$t/$f" "$t/$f"; done
 set --
 while read -r id; do set -- "$@" --ignore "test.$id"; done < "$t/ignore"
+if [ "$nocc" -eq 1 ]; then
+  echo "regrtest: compiler is absent (${cc:-CC is empty}), so nocompiler: tests must fail"
+else
+  echo "regrtest: compiler $cc is present, so nocompiler: tests must pass"
+fi
 
 cd "$t"
 { rc=0; "$py" -m test -j0 -W --timeout 600 -uall,-network,-gui,-audio,-largefile "$@" || rc=$?; echo "$rc" > "$t/rc"; } 2>&1 | tee "$t/log"

@@ -11,7 +11,7 @@ cat > "$t/python" <<'EOF'
 #!/bin/sh
 if [ "$1" = -I ]; then
   [ -z "$FAKE_PREFIX_FAILS" ] || exit 1
-  printf '%s\n%s\n' "${FAKE_REAL_PREFIX:-/stage/usr/local/mavergreen/python315}" "${FAKE_CONFIG_PREFIX:-/nonexistent/python315}"
+  printf '%s\n%s\n%s\n' "${FAKE_REAL_PREFIX:-/stage/usr/local/mavergreen/python315}" "${FAKE_CONFIG_PREFIX:-/nonexistent/python315}" "$FAKE_CC"
   exit 0
 fi
 printf '%s\n' "$*" > "$FAKE_ARGS"
@@ -20,8 +20,8 @@ cat "$FAKE_LOG"
 exit "$FAKE_RC"
 EOF
 chmod +x "$t/python"
-ctx=""; real=""; config=""; qfail=""
-run() { rm -f "$t/args"; REGRTEST_CONTEXT="$ctx" FAKE_REAL_PREFIX="$real" FAKE_CONFIG_PREFIX="$config" FAKE_PREFIX_FAILS="$qfail" FAKE_ARGS="$t/args" FAKE_LOG="$1" FAKE_RC="$2" sh "$script" "$t/python" "$t/known" > "$t/out" 2>&1; }
+ctx=""; real=""; config=""; qfail=""; cc=""
+run() { rm -f "$t/args"; REGRTEST_CONTEXT="$ctx" FAKE_REAL_PREFIX="$real" FAKE_CONFIG_PREFIX="$config" FAKE_PREFIX_FAILS="$qfail" FAKE_CC="$cc" FAKE_ARGS="$t/args" FAKE_LOG="$1" FAKE_RC="$2" sh "$script" "$t/python" "$t/known" > "$t/out" 2>&1; }
 says() { grep -q -e "$1" "$t/out" || { echo "FAIL $2: wanted \"$1\" in: $(cat "$t/out")"; exit 1; }; }
 all="$fx/known-failures.txt"
 
@@ -77,7 +77,7 @@ run "$t/colored.log" 2 || { echo "FAIL colored output: $(cat "$t/out")"; exit 1;
 
 { cat "$all"; echo 'test_os.ExecTests.test_whatever'; } > "$t/known"
 if run "$fx/failure.log" 2; then echo "FAIL a listing with no reason passed"; exit 1; fi
-says 'line 7 is not' "no reason"
+says 'line 7 is not `\[stage:|flaky:|ignore:|nocompiler:\] ' "no reason"
 [ ! -e "$t/args" ] || { echo "FAIL the suite ran despite a malformed list"; exit 1; }
 { cat "$all"; echo 'test_crashy  # again'; } > "$t/known"
 if run "$fx/failure.log" 2; then echo "FAIL a duplicate listing passed"; exit 1; fi
@@ -105,6 +105,23 @@ says '1 of 2 flaky failed' "flaky count"
 grep -v test_crashy "$all" | sed 's/^test_math/flaky: test_math/' > "$t/known"
 if run "$fx/failure.log" 2; then echo "FAIL flaky: lines hid an unlisted failure"; exit 1; fi
 says 'does not list: test_crashy$' "flaky: hides only itself"
+
+printf '#!/bin/sh\n' > "$t/clang"; chmod 755 "$t/clang"; printf 'not a compiler\n' > "$t/plain"
+sed 's/^test_crashy /nocompiler: test_crashy /' "$all" > "$t/known"
+run "$fx/failure.log" 2 || { echo "FAIL a nocompiler: failure with no compiler named: $(cat "$t/out")"; exit 1; }
+says 'compiler is absent' "nocompiler: with no compiler named"
+for cc in "/nonexistent/clang --target=x" "$t/plain --target=x" "$t"; do
+  run "$fx/failure.log" 2 || { echo "FAIL a nocompiler: failure with CC $cc, not an executable file: $(cat "$t/out")"; exit 1; }
+done
+cc="$t/clang --no-default-config --target=x"
+if run "$fx/failure.log" 2; then echo "FAIL a nocompiler: failure passed with the compiler present"; exit 1; fi
+says 'does not list: test_crashy$' "nocompiler: with the compiler present"
+says "compiler $t/clang is present" "nocompiler: names the compiler it found"
+{ cat "$all"; echo 'nocompiler: test_os.ExecTests.test_whatever  # canned: builds an extension'; } > "$t/known"
+run "$fx/failure.log" 2 || { echo "FAIL a passing nocompiler: test with the compiler present: $(cat "$t/out")"; exit 1; }
+cc=""
+if run "$fx/failure.log" 2; then echo "FAIL a nocompiler: test that passed with no compiler passed the gate"; exit 1; fi
+says 'did not fail: test_os.ExecTests.test_whatever$' "stale nocompiler:"
 
 r='ignore: test_tarfile.TestExtractionFilters.test_realpath_limit_attack  # canned: breaks the run'
 { cat "$all"; echo "$r. Revisit when it no longer does."; } > "$t/known"

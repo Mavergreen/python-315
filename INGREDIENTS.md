@@ -88,9 +88,10 @@ the Command Line Tools has no make, and the hermetic `PATH` keeps out any other.
 - **Installed build configuration:** `build/rewrite-config.sh` rewrites every installed text file that
   names a build-host path (`_sysconfigdata`, the `_sysconfig_vars` JSON, the config `Makefile`,
   `config.c`, the pkgconfig files), so a C extension built later against this Python reaches nothing
-  on the builder's machine. clang22 becomes `/usr/local/mavergreen/clang22`, with the same target
-  flags. On x86_64 the SDK becomes `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`, where Longboat
-  installs it; the family has no arm64 SDK path, so arm64 loses `-isysroot`, and an arm64 extension
+  on the builder's machine. clang22 becomes the installed compiler of the pkg that built each slice,
+  with the same target flags: `/usr/local/mavergreen/clang22` on x86_64 and
+  `/usr/local/mavergreen/clang22-cross` on arm64. On x86_64 the SDK becomes
+  `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`, where Longboat installs it; the family has no arm64 SDK path, so arm64 loses `-isysroot`, and an arm64 extension
   build needs `SDKROOT` set: `CC` carries `--no-default-config` and clang22 never runs `xcrun`. The
   static libraries' and Recaulk's flags go, since python links them already, and the source and
   build directories become `LIBPL`, as sysconfig itself reports `srcdir` for an installed Python. `LIBDIR` stays the install path. Debug info names sources and objects relative to

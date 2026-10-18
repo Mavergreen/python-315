@@ -6,7 +6,9 @@
 #          Rewrites every text file in TREE (an installed python315) that names a build-host path, prints
 #          each rewritten file's path relative to TREE, and removes the stale .pyc files of a rewritten .py.
 #          In the installed sysconfig, config Makefile, pkgconfig and the rest:
-#          - clang22 is /usr/local/mavergreen/clang22, with the same target flags;
+#          - clang22 is where that arch's family compiler installs, with the same target flags:
+#            x86_64's /usr/local/mavergreen/clang22 (the 10.9 build) and arm64's
+#            /usr/local/mavergreen/clang22-cross (the clang22-cross pkg, which built the arm64 slice);
 #          - x86_64's SDK is /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk, where Longboat puts it;
 #          - arm64 has no family SDK path, so its -isysroot and SDK -I/-L flags go: an arm64 extension build
 #            needs SDKROOT set, since CC carries --no-default-config and clang22 never runs xcrun;
@@ -67,7 +69,10 @@ ver="$(tr -d '[:space:]' < "$here/../UPSTREAM_VERSION" | cut -d. -f1,2)"
 prefix=/usr/local/mavergreen/python315
 libpl="$prefix/lib/python$ver/config-$ver-darwin"
 sdk109=/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk
-clang22_installed=/usr/local/mavergreen/clang22
+case "$arch" in
+  x86_64) clang22_installed=/usr/local/mavergreen/clang22 ;;
+  arm64) clang22_installed=/usr/local/mavergreen/clang22-cross ;;
+esac
 
 t="$(mktemp -d "${TMPDIR:-/tmp}/rewrite-config.XXXXXX")"
 trap 'rm -rf "$t"' EXIT

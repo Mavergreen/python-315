@@ -105,9 +105,10 @@ if ls "$t/x86_64/$x/__pycache__"/_sysconfigdata__darwin_darwin.* > /dev/null 2>&
 
 stage arm64
 rewrite arm64 || fail "the arm64 rewrite failed: $(cat "$t/out")"
-is CC arm64 "'/usr/local/mavergreen/clang22/bin/clang --no-default-config --target=arm64-apple-macos11.0 -fuse-ld=lld'"
+is CC arm64 "'/usr/local/mavergreen/clang22-cross/bin/clang --no-default-config --target=arm64-apple-macos11.0 -fuse-ld=lld'"
 is MODULE__CTYPES_CFLAGS arm64 "'-fno-strict-overflow -DUSING_APPLE_OS_LIBFFI=1'"
 is CONFIGURE_CPPFLAGS arm64 "''"
+grep -q -F 'CC = "/usr/local/mavergreen/clang22-cross/bin/clang"' "$t/arm64/bin/python$mm-config" || fail "arm64 python$mm-config's clang22 is not clang22-cross: $(cat "$t/arm64/bin/python$mm-config")"
 grep -q -F 'lib/pkgconfig' "$t/out" && fail "the arm64 pkgconfig names no build-host path, yet was rewritten"
 cmp -s "$t/x86_64/lib/pkgconfig/python-$mm.pc" "$t/arm64/lib/pkgconfig/python-$mm.pc" || fail "the x86_64 pkgconfig still differs from arm64's: $(cat "$t/x86_64/lib/pkgconfig/python-$mm.pc")"
 
@@ -151,4 +152,4 @@ for left in "$br/tools/make-4.4.1/bin/make" "$home/.netrc" "/Users/somebody/Libr
 done
 
 if HOME="$home" sh "$script" --arch ppc --tree "$t/x86_64" > "$t/out" 2>&1; then fail "rewrite-config.sh took --arch ppc"; fi
-echo "PASS: rewrite-config maps clang22, the x86_64 SDK, sources, HOME and a cross build's build python to installed paths, drops arm64's SDK and the deps' and Recaulk's flags, and refuses any build-host path left"
+echo "PASS: rewrite-config maps clang22 (x86_64) and clang22-cross (arm64), the x86_64 SDK, sources, HOME and a cross build's build python to installed paths, drops arm64's SDK and the deps' and Recaulk's flags, and refuses any build-host path left"
