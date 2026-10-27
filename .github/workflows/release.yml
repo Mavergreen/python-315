@@ -321,9 +321,10 @@ jobs:
         with:
           image-key: ${{ secrets.MAVERICKS_VM_KEY }}
           envs: PY_VERSION
-          # 3 of the runner's 4 vCPUs, leaving one to QEMU's own threads; at 4, with regrtest's -j0,
-          # load reached 20-27 and a different multiprocessing test missed its timeout each run.
-          cpu: '3'
+          # 2 of the runner's 4 vCPUs, the Action's default. At 4, with regrtest's -j0, load reached
+          # 20-27 and a different multiprocessing test missed its timeout each run; at 3, 10.9 never
+          # got past OpenCore (40438516884).
+          cpu: '2'
           mem: '8192'
           run: |
             sw_vers
@@ -332,7 +333,7 @@ jobs:
             PY_STAGE=/ sh tests/smoke-runtime.sh
             PY_STAGE=/ sh tests/family-site-test.sh
             sudo tar -xzof "dist/python-$PY_VERSION-tests.tar.gz" -C /usr/local/mavergreen/python315
-            sh -c 'REGRTEST_CONTEXT=installed REGRTEST_JOBS=3 sh tests/regrtest.sh /usr/local/mavergreen/python315/bin/python3.15 tests/known-failures/x86_64-10.9.txt; echo $? > regrtest.rc' 2>&1 \
+            sh -c 'REGRTEST_CONTEXT=installed REGRTEST_JOBS=2 sh tests/regrtest.sh /usr/local/mavergreen/python315/bin/python3.15 tests/known-failures/x86_64-10.9.txt; echo $? > regrtest.rc' 2>&1 \
               | tee regrtest-x86_64-10.9.log
             exit "$(cat regrtest.rc)"
       - uses: actions/upload-artifact@v7
