@@ -1,6 +1,6 @@
 #!/bin/sh
 # platform: macOS-only -- runs the product's python, which is a macOS build
-#   usage: [REGRTEST_CONTEXT=stage|installed] tests/regrtest.sh <python> <known-failures-file>
+#   usage: [REGRTEST_CONTEXT=stage|installed] [REGRTEST_JOBS=<n>] tests/regrtest.sh <python> <known-failures-file>
 #          Runs CPython's regression suite with <python>, by its physical path, with every resource but
 #          network, gui, audio and largefile (largefile writes multi-GB files). It passes only when the
 #          tests that fail are exactly the ones <known-failures-file> lists, one per line:
@@ -17,6 +17,8 @@
 #          REGRTEST_CONTEXT defaults to installed when <python>'s prefix is its configured prefix (the
 #          parent of sysconfig's LIBDIR; sysconfig's own `prefix` follows sys.prefix), else stage. A stage run refuses a host where the configured prefix exists: a stage's copied venv
 #          interpreters would load that installed libpython through python3.15's fallback rpath.
+#          REGRTEST_JOBS is regrtest's -j, default 0 (CPUs + 2). A guest whose vCPUs are all its host's
+#          has none to spare for that, and its multiprocessing tests miss their timeouts.
 #          Exits 77 when given no arguments.
 set -eu
 fail() { echo "FAIL: $*"; exit 1; }
@@ -49,6 +51,10 @@ case "${REGRTEST_CONTEXT:-}" in
   "") if [ "$real_prefix" = "$installed_prefix" ]; then context=installed; else context=stage; fi ;;
   stage | installed) context="$REGRTEST_CONTEXT" ;;
   *) echo "REGRTEST_CONTEXT is $REGRTEST_CONTEXT, not stage or installed" >&2; exit 2 ;;
+esac
+jobs="${REGRTEST_JOBS:-0}"
+case "$jobs" in
+  "" | *[!0-9]*) echo "REGRTEST_JOBS is $jobs, not a number" >&2; exit 2 ;;
 esac
 if [ "$context" = stage ] && [ -n "$installed_prefix" ] && [ "$real_prefix" != "$installed_prefix" ]; then
   fail "a stage run on a host where $config_prefix is installed tests that installed libpython in its copied venvs; run it on a host without $config_prefix, or against the installed tree"
@@ -83,7 +89,7 @@ else
 fi
 
 cd "$t"
-{ rc=0; "$py" -m test -j0 -W --timeout 600 -uall,-network,-gui,-audio,-largefile "$@" || rc=$?; echo "$rc" > "$t/rc"; } 2>&1 | tee "$t/log"
+{ rc=0; "$py" -m test -j"$jobs" -W --timeout 600 -uall,-network,-gui,-audio,-largefile "$@" || rc=$?; echo "$rc" > "$t/rc"; } 2>&1 | tee "$t/log"
 [ -s "$t/rc" ] || fail "the suite exited without reporting a status"
 rc="$(cat "$t/rc")"
 

@@ -32,6 +32,11 @@ says '^PASS: regrtest (stage): 5 failing tests' "exact match"
   echo "FAIL the suite ran as: $(cat "$t/args")"; exit 1; }
 [ "$(cat "$t/args.0")" = "$(cd -P "$t" && pwd -P)/python" ] || {
   echo "FAIL ran $(cat "$t/args.0"), not the python by its physical path (unittest's discovery tests fail under a symlinked prefix such as /var)"; exit 1; }
+(REGRTEST_JOBS=3 run "$fx/failure.log" 2) || { echo "FAIL REGRTEST_JOBS=3: $(cat "$t/out")"; exit 1; }
+[ "$(cat "$t/args")" = "-m test -j3 -W --timeout 600 -uall,-network,-gui,-audio,-largefile" ] || {
+  echo "FAIL REGRTEST_JOBS=3 ran the suite as: $(cat "$t/args")"; exit 1; }
+rc=0; (REGRTEST_JOBS=lots run "$fx/failure.log" 2) || rc=$?
+[ "$rc" -eq 2 ] || { echo "FAIL REGRTEST_JOBS=lots exited $rc, not 2"; exit 1; }
 
 grep -v test_name_resolution "$all" > "$t/known"
 if run "$fx/failure.log" 2; then echo "FAIL an unlisted failure passed"; exit 1; fi
